@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1"
+		xmlns:v3="urn:schemas-microsoft-com:asm.v3"
+		xmlns:ws2005="http://schemas.microsoft.com/SMI/2005/WindowsSettings"
+		xmlns:ws2016="http://schemas.microsoft.com/SMI/2016/WindowsSettings"
+		manifestVersion="1.0">
+	<assemblyIdentity 
+		version="1.0.0.0" 
+		type="win32" 
+		name="DPI testing" 
+		processorArchitecture="x86"
+	/>
+	<description>DPI testing</description>
+	<v3:application>
+		<v3:windowsSettings>
+			<ws2005:dpiAware>true/PM</ws2005:dpiAware>
+			<ws2016:dpiAwareness>PerMonitorV2, PerMonitor</ws2016:dpiAwareness>
+		</v3:windowsSettings>
+	</v3:application>
+	<dependency>
+	    <dependentAssembly>
+	        <assemblyIdentity
+	            type="win32"
+	            name="Microsoft.Windows.Common-Controls"
+	            version="6.0.0.0"
+	            language="*"
+	            processorArchitecture="x86"
+	            publicKeyToken="6595b64144ccf1df"
+	        />
+	    </dependentAssembly>
+	</dependency>
+</assembly>
