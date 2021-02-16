@@ -659,7 +659,7 @@ Define Class DPIAwareManager As Custom
 		IF PEMSTATUS(m.Ctrl, "DPIAware_" + m.Property, 5)
 			TRY
 				* regular properties are scaled from the current value
-				* unless they are excluded for bing automatic or unset
+				* unless they are excluded for being automatic or unset
 				m.OriginalValue = EVALUATE("m.Ctrl.DPIAware_" + m.Property)
 				IF PCOUNT() < 5 OR m.Excluded != m.OriginalValue
 
@@ -705,7 +705,7 @@ Define Class DPIAwareManager As Custom
 		IF PEMSTATUS(m.Ctrl, "DPIAware_" + m.Property, 5)
 			TRY
 				* fixed properties are scaled from the original value
-				* unless they are excluded for bing automatic or unset
+				* unless they are excluded for being automatic or unset
 				m.OriginalValue = EVALUATE("m.Ctrl.DPIAware_" + m.Property)
 				IF PCOUNT() < 5 OR m.Excluded != m.OriginalValue
 
@@ -779,7 +779,7 @@ Define Class DPIAwareManager As Custom
 			ENDIF
 
 			* but if not and this one was the best yet, use it and continue looking
-			IF m.Difference > 0 AND m.Difference < m.BestDifference
+			IF m.Difference > 0 AND (m.BestDifference < 0 OR m.Difference < m.BestDifference)
 				m.BestAlternative = EVALUATE("m.Ctrl." + m.Property + m.AlternativeScales[m.AlternativesIndex])
 				m.BestDifference = m.Difference
 			ENDIF
