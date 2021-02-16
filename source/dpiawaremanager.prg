@@ -51,8 +51,8 @@ Define Class DPIAwareManager As Custom
 		* add DPI-aware related properties
 		This.AddDPIProperty(m.AForm, "hMonitor", MonitorFromWindow(m.AForm.HWnd, 0))
 		This.AddDPIProperty(m.AForm, "DPIAwareManager", This)
-		This.AddDPIProperty(m.AForm, "DPIScale", DPI_STANDARD_SCALE)
-		This.AddDPIProperty(m.AForm, "DPINewScale", This.GetMonitorDPIScale(m.AForm))
+		This.AddDPIProperty(m.AForm, "DPIScale", This.GetMonitorDPIScale(m.AForm))
+		This.AddDPIProperty(m.AForm, "DPINewScale", m.AForm.DPIScale)
 		This.AddDPIProperty(m.AForm, "DPIAutoConstraint", IIF(m.AForm = _Screen OR m.AForm.ShowWindow = 2, DPIAW_NO_REPOSITION, DPIAW_RELATIVE_TOP_LEFT))
 
 		* save the original value of dimensional and positional properties of the form
@@ -64,9 +64,9 @@ Define Class DPIAwareManager As Custom
 		ENDIF
 		BINDEVENT(m.AForm.hWnd, WM_DPICHANGED, This, "WMCheckDPIScaleChange")
 
-		* if the form was created in a non 100% scale monitor, perform an initial scaling
-		IF m.AForm.DPINewScale != m.AForm.DPIScale
-			This.Scale(m.AForm, m.AForm.DPIScale, m.AForm.DPINewScale)
+		* if the form was created in a non 100% scale monitor, perform an initial scaling without preadjustment
+		IF m.AForm.DPINewScale != DPI_STANDARD_SCALE
+			This.Scale(m.AForm, DPI_STANDARD_SCALE, m.AForm.DPINewScale, .T.)
 		ENDIF
 
 	ENDFUNC
@@ -418,7 +418,7 @@ Define Class DPIAwareManager As Custom
 
 	* Scale
 	* Scale a container from one scale to another.
-	FUNCTION Scale (Ctnr AS Object, DPIScale AS Number, DPINewScale AS Number)
+	FUNCTION Scale (Ctnr AS Object, DPIScale AS Number, DPINewScale AS Number, DontPreAdjust AS Logical)
 
 		LOCAL IsForm AS Logical
 		LOCAL SubCtrl AS Object
@@ -429,7 +429,7 @@ Define Class DPIAwareManager As Custom
 		* forms require a pre-adjustement because the way Windows/VFP(?) pass from one scale to another,
 		*   removing a few fixed pixels from the form dimensions (width and height) - this is done automatically as soon
 		*   as the DPI scales changes and before the DPIAwareManager has a chance to step in
-		IF m.IsForm
+		IF m.IsForm AND !m.DontPreAdjust
 			This.PreAdjustFormDimensions(m.Ctnr, m.DPIScale, m.DPINewScale)
 		ENDIF
 

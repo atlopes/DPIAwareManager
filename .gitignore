@@ -4,3 +4,5 @@
 temp/*.*
 testing/forms/*.*
 !testing/forms/thisFolderIntentionallyLeftEmpty
+testing/unmanagedforms/*.*
+!testing/unmanagedforms/thisFolderIntentionallyLeftEmpty
