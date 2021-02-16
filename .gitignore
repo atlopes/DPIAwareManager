@@ -3,3 +3,4 @@
 *.exe
 temp/*.*
 testing/forms/*.*
+!testing/forms/thisFolderIntentionallyLeftEmpty
