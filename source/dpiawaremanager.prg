@@ -132,16 +132,11 @@ Define Class DPIAwareManager As Custom
 	* Returns the DPI Scale of the form that contains an object.
 	FUNCTION GetFormDPIScale (DPIAwareObject AS Object) AS Integer
 
-		LOCAL DPIScale AS Integer
-		LOCAL ThisObject AS Object
+		LOCAL ObjectForm AS Form
 
-		* look for a form in the (parent) hierarchy of the object
-		m.ThisObject = m.DPIAwareObject
-		DO WHILE !m.ThisObject.BaseClass == "Form" AND PEMSTATUS(m.ThisObject, "Parent", 5)
-			m.ThisObject = m.ThisObject.Parent
-		ENDDO
+		m.ObjectForm = This.GetThisform(m.DPIAwareObject)
 
-		RETURN IIF(m.ThisObject.BaseClass == "Form", m.ThisObject.DPIScale, DPI_STANDARD_SCALE)
+		RETURN IIF(!ISNULL(m.ObjectForm), m.ObjectForm.DPIScale, DPI_STANDARD_SCALE)
 			
 	ENDFUNC
 
@@ -433,9 +428,12 @@ Define Class DPIAwareManager As Custom
 			This.PreAdjustFormDimensions(m.Ctnr, m.DPIScale, m.DPINewScale)
 		ENDIF
 
-		* If the container is not DPI aware, don't touch it
+		* if the container is not DPI aware or if it's fully self-controlled, don't touch it
 		TRY
 			m.Scalable = NVL(m.Ctnr.DPIAware, .F.)
+			IF m.Scalable
+				m.Scalable = This.SelfScaleControl(m.Ctnr, m.DPIScale, m.DPINewScale)
+			ENDIF
 		CATCH
 			m.Scalable = .F.
 		ENDTRY
@@ -444,7 +442,7 @@ Define Class DPIAwareManager As Custom
 			RETURN
 		ENDIF
 
-		* all anchors in a form are set to zero, so that the scale won't trigger resize and reposition of containde controls
+		* all anchors in a form are set to zero, so that the scale won't trigger resize and reposition of contained controls
 		IF m.IsForm
 
 			m.Ctnr.LockScreen = .T.
@@ -473,6 +471,22 @@ Define Class DPIAwareManager As Custom
 	* ScaleControl
 	* Scales a control from one scale to another.
 	FUNCTION ScaleControl (Ctrl AS Object, DPIScale as Number, DPINewScale as Number)
+
+		LOCAL Scalable AS Logical
+
+		* If the control is not DPI aware or if it is fully self-controlled, don't touch it
+		TRY
+			m.Scalable = NVL(m.Ctrl.DPIAware, .F.)
+			IF m.Scalable
+				m.Scalable = This.SelfScaleControl(m.Ctrl, m.DPIScale, m.DPINewScale)
+			ENDIF
+		CATCH
+			m.Scalable = .F.
+		ENDTRY
+
+		IF !m.Scalable
+			RETURN
+		ENDIF
 
 		LOCAL SubCtrl AS Object
 
@@ -505,6 +519,40 @@ Define Class DPIAwareManager As Custom
 				This.AdjustSize(m.SubCtrl, m.DPIScale, m.DPINewScale)
 			ENDFOR
 		ENDCASE
+
+	ENDFUNC
+
+	* SelfScaleControl
+	* Checks if the scale of the control is processed by the control itself.
+	* If it returns .T., the manager will continue for the control; if .F., stops the scale process for the container. 
+	FUNCTION SelfScaleControl (Ctrl AS Object, DPIScale AS Integer, DPINewScale AS Integer) AS Logical
+
+		LOCAL CtrlsForm AS Form
+
+		* if DPI awareness is controlled by the container itself, just pass the process to the container
+		IF PEMSTATUS(m.Ctrl, "DPIAwareSelfControl", 5)
+
+			DO CASE
+
+			* the scale process is made by the control itself
+			CASE m.Ctrl.DPIAwareSelfControl = 1
+
+				RETURN m.Ctrl.DPIAwareSelfManager(m.DPIScale, m.DPINewScale, This)
+
+			* the scale process is made by the form
+			CASE m.Ctrl.DPIAwareSelfControl = 2
+
+				m.CtrlsForm = This.GetThisform(m.Ctrl)
+				IF !ISNULL(m.CtrlsForm)
+					RETURN m.CtrlsForm.DPIAwareControlsManager(m.DPIScale, m.DPINewScale, m.Ctrl)
+				ENDIF
+
+			ENDCASE
+
+		ENDIF
+
+		* the DPI manager process the control
+		RETURN .T.
 
 	ENDFUNC
 
@@ -809,6 +857,23 @@ Define Class DPIAwareManager As Custom
 #DEFINE METHODS_UTILITIES
 ****************************************************************************************
 
+	* GetThisform
+	* Returns the form to which an object belongs.
+	FUNCTION GetThisform (Ctrl AS Object) AS Integer
+
+		LOCAL ThisObject AS Object
+
+		* look for a form in the (parent) hierarchy of the object
+		m.ThisObject = m.Ctrl
+		DO WHILE !m.ThisObject.BaseClass == "Form" AND PEMSTATUS(m.ThisObject, "Parent", 5)
+			m.ThisObject = m.ThisObject.Parent
+		ENDDO
+
+		RETURN IIF(m.ThisObject.BaseClass == "Form", m.ThisObject, .NULL)
+			
+	ENDFUNC
+
+
 	* AddDPIProperty
 	* Adds a DPI-awareness related property to an object (fails silently)
 	FUNCTION AddDPIProperty (Ctrl AS Object, Property AS String, InitialValue) AS Void
@@ -843,7 +908,7 @@ Define Class DPIAwareManager As Custom
 	ENDFUNC
 
 	* GetDPILevel
-	* Gets s DPI level (0, 1, 2...) given a scale.
+	* Gets the DPI level (0, 1, 2...) given a scale.
 	FUNCTION GetDPILevel (DPIScale AS Integer) AS Integer
 
 		RETURN ROUND((m.DPIScale - DPI_STANDARD_SCALE) / DPI_SCALE_INCREMENT, 0)
