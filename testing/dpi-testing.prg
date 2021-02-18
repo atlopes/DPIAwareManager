@@ -15,6 +15,16 @@ m.DPI.Manage(_Screen)
 * and we'll want to see a log
 m.DPI.Log()
 
+* create a screen extension manager to demonstrate a DPI-aware menu
+_Screen.AddObject("DPIAwareScreenManager", "ScreenManager")
+
+* a new menu pad to extend the system menu
+DEFINE PAD padDPIAware OF _MSYSMENU PROMPT "DPIAware"
+DEFINE POPUP popDPIAware MARGIN RELATIVE
+ON PAD padDPIAware OF _MSYSMENU ACTIVATE POPUP popDPIAware
+DEFINE BAR 1 OF popDPIAware PROMPT "DPI-aware menu bars" FONT "Arial", 8
+DEFINE BAR 2 OF popDPIAware PROMPT "Current scale: 100%" FONT "Arial", 8
+
 ACTIVATE SCREEN
 
 * attention! the browse window is not manageable
@@ -95,3 +105,23 @@ DEFINE CLASS Terminator AS Custom
 	ENDFUNC
 
 ENDDEFINE
+
+DEFINE CLASS ScreenManager AS DPIAwareScreenManager OF ../source/dpiawaremanager.prg
+
+	FUNCTION SelfManage (DPIScale AS Integer, DPINewScale AS Integer)
+
+		LOCAL NewFontSize AS Integer
+
+		RELEASE BAR ALL OF popDPIAware
+		
+		m.NewFontSize = ROUND(8 * m.DPINewScale / 100, 0)
+
+		DEFINE BAR 1 OF popDPIAware PROMPT "DPI-aware menu bars" FONT "Arial", m.NewFontSize
+		DEFINE BAR 2 OF popDPIAware PROMPT TEXTMERGE("Current scale: <<m.DPINewScale>>%") FONT "Arial", m.NewFontSize
+
+	ENDFUNC
+
+
+ENDDEFINE
+
+

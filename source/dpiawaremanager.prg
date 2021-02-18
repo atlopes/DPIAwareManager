@@ -181,15 +181,17 @@ Define Class DPIAwareManager As Custom
 		LOCAL DPIAwareForm AS Form
 		m.DPIAwareForm = m.SourceEvent(1)
 
-		This.ChangeFormDPIScale(m.DPIAwareForm, This.GetMonitorDPIScale(m.DPIAwareForm))
+		IF This.ChangeFormDPIScale(m.DPIAwareForm, This.GetMonitorDPIScale(m.DPIAwareForm)) = 0
 
-		IF m.DPIAwareForm = _Screen
+			IF m.DPIAwareForm = _Screen
 
-			FOR EACH m.DPIAwareForm AS Form IN _Screen.Forms
-				IF m.DPIAwareForm.ShowWindow = 0
-					This.ChangeFormDPIScale(m.DPIAwareForm, _Screen.DPIScale)
-				ENDIF
-			ENDFOR
+				FOR EACH m.DPIAwareForm AS Form IN _Screen.Forms
+					IF m.DPIAwareForm.ShowWindow = 0
+						This.ChangeFormDPIScale(m.DPIAwareForm, _Screen.DPIScale)
+					ENDIF
+				ENDFOR
+
+			ENDIF
 
 		ENDIF
 
@@ -215,8 +217,14 @@ Define Class DPIAwareManager As Custom
 
 			* perform the actual scaling
 			TRY
+
 				This.Scale(m.DPIAwareForm, m.DPIAwareForm.DPIScale, m.NewDPIScale)
 				This.EnforceFormConstraints(m.DPIAwareForm)
+
+				IF m.DPIAwareForm = _Screen AND PEMSTATUS(_Screen, "DPIAwareScreenManager", 5)
+					_Screen.DPIAwareScreenManager.SelfManage(_Screen.DPIScale, m.NewDPIScale) 
+				ENDIF
+
 			CATCH TO m.oPS
 				* quick dirty info on error
 				MESSAGEBOX(TEXTMERGE("<<m.ops.message>> @ <<m.ops.linecontents>> / <<m.Ops.Lineno>>"))
@@ -229,9 +237,11 @@ Define Class DPIAwareManager As Custom
 				m.DPIAwareForm.WindowState = 2
 			ENDIF
 
+			RETURN 0
+
 		ENDIF
 
-		RETURN 0
+		RETURN -1
 
 	ENDFUNC
 
@@ -547,6 +557,11 @@ Define Class DPIAwareManager As Custom
 					RETURN m.CtrlsForm.DPIAwareControlsManager(m.DPIScale, m.DPINewScale, m.Ctrl)
 				ENDIF
 
+			* the scale process is made by the _Screen
+			CASE m.Ctrl.DPIAwareSelfControl = 3
+
+				RETURN _Screen.DPIAwareScrenManager.DPIAwareControlsManager(m.DPIScale, m.DPINewScale, m.Ctrl)
+
 			ENDCASE
 
 		ENDIF
@@ -841,7 +856,7 @@ Define Class DPIAwareManager As Custom
 	ENDFUNC
 
 ****************************************************************************************
-#DEFINE METHODS_HELPER
+#DEFINE METHODS_HELPERS
 ****************************************************************************************
 
 	* AddControl
@@ -913,6 +928,20 @@ Define Class DPIAwareManager As Custom
 
 		RETURN ROUND((m.DPIScale - DPI_STANDARD_SCALE) / DPI_SCALE_INCREMENT, 0)
 
+	ENDFUNC
+
+ENDDEFINE
+
+* DPIAwareScreenManager
+* An extension manager for the _Screen object.
+DEFINE CLASS DPIAwareScreenManager AS Custom
+
+	FUNCTION DPIAwareControlsManager(DPIScale AS Integer, DPINewScale AS Integer, Ctrl AS Object)
+		RETURN .F.
+	ENDFUNC
+
+	FUNCTION SelfManage (DPIScale AS Integer, DPINewScale AS Integer)
+		RETURN .F.
 	ENDFUNC
 
 ENDDEFINE
