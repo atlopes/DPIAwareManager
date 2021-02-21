@@ -4,6 +4,9 @@ _Screen.Caption = "DPI Testing"
 * CTRL+D on a form displays its dimensions
 ON KEY LABEL CTRL+D Dimensions()
 
+* incorporate FoxyDialog(), by Cesar Chalom
+SET PROCEDURE TO FoxyDialog ADDITIVE
+
 * put the class in scope
 DO DPIAwareManager.prg
 
@@ -22,8 +25,8 @@ _Screen.AddObject("DPIAwareScreenManager", "ScreenManager")
 DEFINE PAD padDPIAware OF _MSYSMENU PROMPT "DPIAware"
 DEFINE POPUP popDPIAware MARGIN RELATIVE
 ON PAD padDPIAware OF _MSYSMENU ACTIVATE POPUP popDPIAware
-DEFINE BAR 1 OF popDPIAware PROMPT "DPI-aware menu bars" FONT "Arial", 8
-DEFINE BAR 2 OF popDPIAware PROMPT "Current scale: 100%" FONT "Arial", 8
+DEFINE BAR 1 OF popDPIAware PROMPT "DPI-aware menu bars" FONT "Segoe UI", 9
+DEFINE BAR 2 OF popDPIAware PROMPT "Current scale: 100%" FONT "Segoe UI", 9
 
 ACTIVATE SCREEN
 
@@ -81,7 +84,7 @@ FOR m.NumSCX = 1 TO ADIR(m.SCX, "unmanagedforms\*.scx")
 ENDFOR
 
 * remember how to quit
-MESSAGEBOX("Close a form to quit!")
+MESSAGEBOX("Close a window to quit!", 64, "DPI-Testing")
 
 READ EVENTS
 
@@ -112,12 +115,10 @@ DEFINE CLASS ScreenManager AS DPIAwareScreenManager OF ../source/dpiawaremanager
 
 		LOCAL NewFontSize AS Integer
 
-		RELEASE BAR ALL OF popDPIAware
-		
-		m.NewFontSize = ROUND(8 * m.DPINewScale / 100, 0)
+		m.NewFontSize = ROUND(9 * m.DPINewScale / 100, 0)
 
-		DEFINE BAR 1 OF popDPIAware PROMPT "DPI-aware menu bars" FONT "Arial", m.NewFontSize
-		DEFINE BAR 2 OF popDPIAware PROMPT TEXTMERGE("Current scale: <<m.DPINewScale>>%") FONT "Arial", m.NewFontSize
+		DEFINE BAR 1 OF popDPIAware PROMPT "DPI-aware menu bars" FONT "Segoe UI", m.NewFontSize
+		DEFINE BAR 2 OF popDPIAware PROMPT TEXTMERGE("Current scale: <<m.DPINewScale>>%") FONT "Segoe UI", m.NewFontSize
 
 	ENDFUNC
 
