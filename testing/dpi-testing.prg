@@ -33,6 +33,9 @@ ACTIVATE SCREEN
 * attention! the browse window is not manageable
 BROWSE NOWAIT LAST
 
+* incorporate additional testing in forms and unmanagedforms folders
+SET PATH TO forms;unmanagedforms ADDITIVE
+
 LOCAL ARRAY ManagedForms[1], UnmanagedForms[1]
 
 * a basic form with info - shown in screen
@@ -41,6 +44,8 @@ DO FORM "monitor dpi in screen.scx" NAME m.ManagedForms[1] LINKED NOSHOW
 * manage and display it
 m.DPI.Manage(m.ManagedForms[1])
 m.ManagedForms[1].Show()
+
+ACTIVATE SCREEN
 
 LOCAL ARRAY SCX[1]
 LOCAL NumSCX AS Integer
@@ -64,6 +69,8 @@ FOR m.NumSCX = 1 TO ADIR(m.SCX, "forms\*.scx")
 	m.DPI.Manage(m.ManagedForms[m.NumSCX + 1])
 	m.ManagedForms[m.NumSCX + 1].Show()
 
+	ACTIVATE SCREEN
+
 ENDFOR
 
 * go through all the unmanaged test forms in the unmanagedforms folder
@@ -80,6 +87,8 @@ FOR m.NumSCX = 1 TO ADIR(m.SCX, "unmanagedforms\*.scx")
 
 	* show the form, but don't manage it
 	m.UnmanagedForms[m.NumSCX].Show()
+
+	ACTIVATE SCREEN
 
 ENDFOR
 

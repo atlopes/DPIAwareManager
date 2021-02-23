@@ -1,7 +1,7 @@
 
 SET PROCEDURE TO (SYS(16)) ADDITIVE
 
-#DEFINE WM_DPICHANGED       				0x02E0
+#DEFINE WM_DPICHANGED						0x02E0
 
 #DEFINE SIZEOF_MONITORINFO					0h28000000
 
@@ -338,7 +338,6 @@ Define Class DPIAwareManager As Custom
 			FOR EACH SubCtrl IN m.Ctrl.Buttons
 				This.SaveOriginalInfo(m.SubCtrl)
 			ENDFOR
-			m.Ctrl.AutoSize = m.Ctrl.AutoSize
 
 		ENDCASE
 
@@ -358,7 +357,9 @@ Define Class DPIAwareManager As Custom
 	* Saves the original information of an object (non-existing properties will be ignored).
 	FUNCTION SaveOriginalInfo (Ctrl AS Object)
 
-		This.AddDPIProperty(m.Ctrl, "DPIAware", .T.)
+		IF !PEMSTATUS(m.Ctrl, "DPIAware", 5)
+			This.AddDPIProperty(m.Ctrl, "DPIAware", .T.)
+		ENDIF
 		This.SaveOriginalProperty(m.Ctrl, "Anchor")
 		This.SaveOriginalProperty(m.Ctrl, "Width")
 		This.SaveOriginalProperty(m.Ctrl, "MinWidth")
@@ -483,6 +484,7 @@ Define Class DPIAwareManager As Custom
 	FUNCTION ScaleControl (Ctrl AS Object, DPIScale as Number, DPINewScale as Number)
 
 		LOCAL Scalable AS Logical
+		LOCAL AutoSizeCtrl AS Logical
 
 		* If the control is not DPI aware or if it is fully self-controlled, don't touch it
 		TRY
@@ -499,6 +501,13 @@ Define Class DPIAwareManager As Custom
 		ENDIF
 
 		LOCAL SubCtrl AS Object
+
+		IF PEMSTATUS(m.Ctrl, "AutoSize", 5)
+			m.AutoSizeCtrl = m.Ctrl.AutoSize
+			m.Ctrl.AutoSize = .F.
+		ELSE
+			m.AutoSizeCtrl = .F.
+		ENDIF
 
 		IF !m.Ctrl.BaseClass $ 'Custom,Grid'
 			This.AdjustSize(m.Ctrl, m.DPIScale, m.DPINewScale)
@@ -528,7 +537,12 @@ Define Class DPIAwareManager As Custom
 			FOR EACH m.SubCtrl In m.Ctrl.Buttons
 				This.AdjustSize(m.SubCtrl, m.DPIScale, m.DPINewScale)
 			ENDFOR
+
 		ENDCASE
+
+		IF m.AutoSizeCtrl
+			m.Ctrl.AutoSize = .T.
+		ENDIF
 
 	ENDFUNC
 
@@ -547,7 +561,7 @@ Define Class DPIAwareManager As Custom
 			* the scale process is made by the control itself
 			CASE m.Ctrl.DPIAwareSelfControl = 1
 
-				RETURN m.Ctrl.DPIAwareSelfManager(m.DPIScale, m.DPINewScale, This)
+				RETURN m.Ctrl.DPIAwareSelfManager(m.DPIScale, m.DPINewScale)
 
 			* the scale process is made by the form
 			CASE m.Ctrl.DPIAwareSelfControl = 2
@@ -956,8 +970,8 @@ DEFINE CLASS DPIAware_Optiongroup AS OptionGroup
 		This.Visible = m.Visibility
 		IF m.Visibility AND ISNULL(This.DPIAware)
 			IF TYPE("Thisform") == "O" AND PEMSTATUS(Thisform, "DPIAware", 5) AND Thisform.DPIAware
-				Thisform.DPIAwareProcessor.AddControl(This)
 				This.DPIAware = .T.
+				Thisform.DPIAwareManager.AddControl(This)
 			ELSE
 				This.DPIAware = .F.
 			ENDIF
