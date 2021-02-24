@@ -331,6 +331,7 @@ Define Class DPIAwareManager As Custom
 
 			FOR EACH SubCtrl IN m.Ctrl.Columns
 				This.SaveOriginalInfo(m.SubCtrl)
+				This.SaveContainer(m.SubCtrl)
 			ENDFOR
 
 		CASE m.Ctrl.BaseClass $ 'Commandgroup,Optiongroup'
@@ -509,7 +510,7 @@ Define Class DPIAwareManager As Custom
 			m.AutoSizeCtrl = .F.
 		ENDIF
 
-		IF !m.Ctrl.BaseClass $ 'Custom,Grid'
+		IF !m.Ctrl.BaseClass == 'Custom'
 			This.AdjustSize(m.Ctrl, m.DPIScale, m.DPINewScale)
 		ENDIF
 
@@ -527,10 +528,33 @@ Define Class DPIAwareManager As Custom
 
 		CASE m.Ctrl.BaseClass == 'Grid'
 
+			* for a grid, calculate the weight of the fixed size elements
+			LOCAL FixedWeight AS Number, FutureWidth AS Number
+			m.FixedWeight = 0
+			WITH m.Ctrl AS Grid
+				IF .RecordMark
+					m.FixedWeight = 10
+				ENDIF
+				IF .DeleteMark
+					m.FixedWeight = m.FixedWeight + 8
+				ENDIF
+				IF BITAND(.ScrollBars, 0x02) != 0
+					m.FixedWeight = m.FixedWeight + SYSMETRIC(5) + 1
+				ENDIF
+				m.FixedWeight = m.FixedWeight + .ColumnCount * .GridLineWidth
+
+				* calculate how the fixed size elements impact the size of the columns
+				* growing will add extra size (as a proportion) to each column
+				m.FutureWidth = ROUND(.Width / This.GetXYRatio(m.DPIScale) * This.GetXYRatio(m.DPINewScale), 0)
+				m.FixedWeight =  (m.FutureWidth - m.FixedWeight) / (.Width - m.FixedWeight) - (m.DPINewScale / m.DPIScale)
+
+			ENDWITH
+
 			FOR EACH m.SubCtrl AS Column IN m.Ctrl.Columns
-				This.AdjustSize(m.SubCtrl, m.DPIScale, m.DPINewScale)
+				* the column will have extra plus or minus space, since some components of the grid width do not grow
+				This.AdjustSize(m.SubCtrl, m.DPIScale, m.DPINewScale, m.FixedWeight)
+				This.Scale(m.SubCtrl, m.DPIScale, m.DPINewScale)
 			ENDFOR
-			This.AdjustSize(m.Ctrl, m.DPIScale, m.DPINewScale)
 
 		CASE m.Ctrl.BaseClass $ 'Commandgroup,Optiongroup'
 
@@ -669,7 +693,7 @@ Define Class DPIAwareManager As Custom
 
 	* AdjustSize
 	* Adjusts the size and position of a control from a scale to another.
-	Function AdjustSize (Ctrl AS Object, DPIScale as Number, NewDPIScale AS Number)
+	Function AdjustSize (Ctrl AS Object, DPIScale as Number, NewDPIScale AS Number, ExtraWidthRatio AS Number)
 
 		LOCAL IsForm AS Logical
 
@@ -690,14 +714,20 @@ Define Class DPIAwareManager As Custom
 		This.AdjustPropertyValue(m.Ctrl, "RowHeight", m.XYRatio, m.NewXYRatio, -1)
 		This.AdjustPropertyValue(m.Ctrl, "HeaderHeight", m.XYRatio, m.NewXYRatio, -1)
 
-		* ajust font size always from its original setting (hence, taken as a "fixed" property)
-		This.AdjustFixedPropertyValue(m.Ctrl, "FontSize", m.XYRatio, m.NewXYRatio)
+		IF !m.Ctrl.BaseClass == "Grid"
+			* ajust font size always from its original setting (hence, taken as a "fixed" property)
+			This.AdjustFixedPropertyValue(m.Ctrl, "FontSize", m.XYRatio, m.NewXYRatio)
+		ENDIF
 
 		* if we are growing, make sure we grow maximum dimensions before growing
 		IF m.IsGrowing
 			This.AdjustFixedPropertyValue(m.Ctrl, "MaxWidth", m.XYRatio, m.NewXYRatio, -1)
 			This.AdjustFixedPropertyValue(m.Ctrl, "MaxHeight", m.XYRatio, m.NewXYRatio, -1)
-			This.AdjustPropertyValue(m.Ctrl, "Width", m.XYRatio, m.NewXYRatio)
+			IF PCOUNT() < 4
+				This.AdjustPropertyValue(m.Ctrl, "Width", m.XYRatio, m.NewXYRatio)
+			ELSE
+				This.AdjustPropertyValue(m.Ctrl, "Width", m.XYRatio, m.NewXYRatio, .NULL., m.ExtraWidthRatio)
+			ENDIF
 			This.AdjustPropertyValue(m.Ctrl, "Height", m.XYRatio, m.NewXYRatio)
 			This.AdjustFixedPropertyValue(m.Ctrl, "MinWidth", m.XYRatio, m.NewXYRatio, -1)
 			This.AdjustFixedPropertyValue(m.Ctrl, "MinHeight", m.XYRatio, m.NewXYRatio, -1)
@@ -705,7 +735,11 @@ Define Class DPIAwareManager As Custom
 		ELSE
 			This.AdjustFixedPropertyValue(m.Ctrl, "MinWidth", m.XYRatio, m.NewXYRatio, -1)
 			This.AdjustFixedPropertyValue(m.Ctrl, "MinHeight", m.XYRatio, m.NewXYRatio, -1)
-			This.AdjustPropertyValue(m.Ctrl, "Width", m.XYRatio, m.NewXYRatio)
+			IF PCOUNT() < 4
+				This.AdjustPropertyValue(m.Ctrl, "Width", m.XYRatio, m.NewXYRatio)
+			ELSE
+				This.AdjustPropertyValue(m.Ctrl, "Width", m.XYRatio, M.NewXYRatio, .NULL., m.ExtraWidthRatio)
+			ENDIF
 			This.AdjustPropertyValue(m.Ctrl, "Height", m.XYRatio, m.NewXYRatio)
 			This.AdjustFixedPropertyValue(m.Ctrl, "MaxWidth", m.XYRatio, m.NewXYRatio, -1)
 			This.AdjustFixedPropertyValue(m.Ctrl, "MaxHeight", m.XYRatio, m.NewXYRatio, -1)
@@ -724,12 +758,13 @@ Define Class DPIAwareManager As Custom
 
 	* AdjustPropertyValue
 	* Adjusts the value of a property to a new value.
-	FUNCTION AdjustPropertyValue (Ctrl AS Object, Property AS String, Ratio AS Number, NewRatio AS Number, Excluded AS Number) AS Logical
+	FUNCTION AdjustPropertyValue (Ctrl AS Object, Property AS String, Ratio AS Number, NewRatio AS Number, Excluded AS Number, ExtraRatio AS Number) AS Logical
 
 		LOCAL Adjusted AS Logical
 		LOCAL OriginalValue AS Number
 		LOCAL CurrentValue AS Number
 		LOCAL NewCurrentValue AS Number
+		LOCAL NewAdjustedRatio AS Number
 
 		m.Adjusted = .F.
 
@@ -738,11 +773,16 @@ Define Class DPIAwareManager As Custom
 				* regular properties are scaled from the current value
 				* unless they are excluded for being automatic or unset
 				m.OriginalValue = EVALUATE("m.Ctrl.DPIAware_" + m.Property)
-				IF PCOUNT() < 5 OR m.Excluded != m.OriginalValue
+				IF PCOUNT() < 5 OR ISNULL(m.Excluded) OR m.Excluded != m.OriginalValue
 
 					* get the current value, stored in the property, and calculate the new one for a new scale
 					m.CurrentValue = EVALUATE("m.Ctrl." + m.Property)
-					m.NewCurrentValue = m.CurrentValue / m.Ratio * m.NewRatio
+					IF PCOUNT() < 6
+						m.NewAdjustedRatio = m.NewRatio
+					ELSE
+						m.NewAdjustedRatio = m.NewRatio + m.ExtraRatio
+					ENDIF
+					m.NewCurrentValue = m.CurrentValue / m.Ratio * m.NewAdjustedRatio
 
 					* store the final (rounded) value
 					STORE ROUND(m.NewCurrentValue, 0) TO ("m.Ctrl." + m.Property)
@@ -752,7 +792,7 @@ Define Class DPIAwareManager As Custom
 						IF USED("DPIAwareManagerLog")
 							INSERT INTO DPIAwareManagerLog (ControlName, ClassName, Property, Original, Ratio, NewRatio, ;
 									FixedProperty, ScaledBefore, Calculated, Stored) ;
-								VALUES (m.Ctrl.Name, m.Ctrl.Class, m.Property, m.OriginalValue, m.Ratio, m.NewRatio, ;
+								VALUES (m.Ctrl.Name, m.Ctrl.Class, m.Property, m.OriginalValue, m.Ratio, m.NewAdjustedRatio, ;
 									.F., m.CurrentValue, m.NewCurrentValue, EVALUATE("m.Ctrl." + m.Property))
 						ENDIF
 					CATCH
@@ -784,7 +824,7 @@ Define Class DPIAwareManager As Custom
 				* fixed properties are scaled from the original value
 				* unless they are excluded for being automatic or unset
 				m.OriginalValue = EVALUATE("m.Ctrl.DPIAware_" + m.Property)
-				IF PCOUNT() < 5 OR m.Excluded != m.OriginalValue
+				IF PCOUNT() < 5 OR ISNULL(m.Excluded) OR m.Excluded != m.OriginalValue
 
 					* calculate the new value
 					m.NewCurrentValue = m.OriginalValue * m.NewRatio
