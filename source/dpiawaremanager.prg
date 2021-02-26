@@ -432,6 +432,9 @@ Define Class DPIAwareManager As Custom
 		LOCAL Scalable AS Logical
 
 		m.IsForm = m.Ctnr.BaseClass == 'Form'
+		IF m.IsForm
+			This.SetAnchor(m.Ctnr, .T.)
+		ENDIF
 
 		* forms require a pre-adjustement because the way Windows/VFP(?) pass from one scale to another,
 		*   removing a few fixed pixels from the form dimensions (width and height) - this is done automatically as soon
@@ -451,6 +454,9 @@ Define Class DPIAwareManager As Custom
 		ENDTRY
 
 		IF !m.Scalable
+			IF m.IsForm
+				This.SetAnchor(m.Ctnr, .F.)
+			ENDIF
 			RETURN
 		ENDIF
 
@@ -458,7 +464,6 @@ Define Class DPIAwareManager As Custom
 		IF m.IsForm
 
 			m.Ctnr.LockScreen = .T.
-			This.SetAnchor(m.Ctnr, .T.)
 
 			* perform the actual resizing of the form
 			This.AdjustSize(m.Ctnr, m.DPIScale, m.DPINewScale)
@@ -521,10 +526,37 @@ Define Class DPIAwareManager As Custom
 
 		CASE m.Ctrl.BaseClass == 'Pageframe'
 
+			* the pageframe is already scaled, but scaling pages may still affect the pagframe size
+			LOCAL TabSize AS Number, NewTabSize AS Number
+			m.TabSize = 0
+			WITH m.Ctrl AS PageFrame
+				* if the pageframe has tabs, get their current size before being scaled by the Pages
+				IF .Tabs
+					IF BITAND(.TabOrientation, 0x02) != 0
+						m.TabSize = .Width - .PageWidth
+					ELSE
+						m.TabSize = .Height - .PageHeight
+					ENDIF
+				ENDIF
+			ENDWITH
+
 			FOR EACH m.SubCtrl AS Page IN m.Ctrl.Pages
 				This.AdjustSize(m.SubCtrl, m.DPIScale, m.DPINewScale)
 				This.Scale(m.SubCtrl, m.DPIScale, m.DPINewScale)
 			ENDFOR
+
+			* recover the size of the pageframe by compensating for what the tabs scaling may have added or cut
+			IF m.TabSize != 0
+				WITH m.Ctrl AS PageFrame
+					IF BITAND(.TabOrientation, 0x02) != 0
+						m.NewTabSize = .Width - .PageWidth
+						.Width = .Width - (m.NewTabSize - m.TabSize)
+					ELSE
+						m.NewTabSize = .Height - .PageHeight
+						.Height = .Height - (m.NewTabSize - m.TabSize)
+					ENDIF
+				ENDWITH
+			ENDIF
 
 		CASE m.Ctrl.BaseClass == 'Grid'
 
@@ -838,7 +870,7 @@ Define Class DPIAwareManager As Custom
 							INSERT INTO DPIAwareManagerLog (ControlName, ClassName, Property, Original, Ratio, NewRatio, ;
 									FixedProperty, ScaledBefore, Calculated, Stored) ;
 								VALUES (m.Ctrl.Name, m.Ctrl.Class, m.Property, m.OriginalValue, m.Ratio, m.NewRatio, ;
-									.T., m.NewCurrentValue, m.NewCurrentValue, EVALUATE("m.Ctrl." + m.Property))
+									.T., m.OriginalValue, m.NewCurrentValue, EVALUATE("m.Ctrl." + m.Property))
 						ENDIF
 					CATCH
 					ENDTRY
@@ -942,7 +974,6 @@ Define Class DPIAwareManager As Custom
 			
 	ENDFUNC
 
-
 	* AddDPIProperty
 	* Adds a DPI-awareness related property to an object (fails silently)
 	FUNCTION AddDPIProperty (Ctrl AS Object, Property AS String, InitialValue) AS Void
@@ -970,7 +1001,7 @@ Define Class DPIAwareManager As Custom
 
 	* GetXYRatio
 	* Gets a ratio multiplier, given a scale
-	HIDDEN FUNCTION GetXYRatio (Scale AS Integer) AS Number
+	FUNCTION GetXYRatio (Scale AS Integer) AS Number
 
 		RETURN m.Scale / DPI_STANDARD_SCALE
 
@@ -981,6 +1012,14 @@ Define Class DPIAwareManager As Custom
 	FUNCTION GetDPILevel (DPIScale AS Integer) AS Integer
 
 		RETURN ROUND((m.DPIScale - DPI_STANDARD_SCALE) / DPI_SCALE_INCREMENT, 0)
+
+	ENDFUNC
+
+	* GetScaledValue
+	* Scale a value, given a scale
+	FUNCTION GetScaledValue (Unscaled AS Number, Scale AS Integer) AS Number
+
+		RETURN m.Unscaled * This.GetXYRatio(m.Scale)
 
 	ENDFUNC
 
