@@ -10,7 +10,8 @@ SET PROCEDURE TO FoxyDialog ADDITIVE
 * put the class in scope
 DO DPIAwareManager.prg
 
-LOCAL DPI AS DPIAwareManager
+* make it public just to let forms put themselves under DPI-aware management
+PUBLIC DPI AS DPIAwareManager
 
 m.DPI = CREATEOBJECT("DPIAwareManager")
 * the VFP screen will be managed
