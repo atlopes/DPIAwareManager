@@ -71,7 +71,7 @@ m.DPI.Manage(This)
 
 ## Reference
 
-It will be available soon, hopefully.
+Available from the repository's [wiki](https://github.com/atlopes/DPIAwareManager/wiki).
 
 ## Quick testing
 

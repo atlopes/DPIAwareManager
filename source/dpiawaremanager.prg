@@ -371,6 +371,7 @@ Define Class DPIAwareManager As Custom
 		This.SaveOriginalProperty(m.Ctrl, "Left")
 		This.SaveOriginalProperty(m.Ctrl, "Top")
 		This.SaveOriginalProperty(m.Ctrl, "FontSize")
+		This.SaveOriginalProperty(m.Ctrl, "Margin")
 		This.SaveOriginalProperty(m.Ctrl, "RowHeight")
 		This.SaveOriginalProperty(m.Ctrl, "HeaderHeight")
 
@@ -747,8 +748,16 @@ Define Class DPIAwareManager As Custom
 		This.AdjustPropertyValue(m.Ctrl, "HeaderHeight", m.XYRatio, m.NewXYRatio, -1)
 
 		IF !m.Ctrl.BaseClass == "Grid"
+			* if we are not growing, calculate the margin first to arrange more space for the text
+			IF !m.IsGrowing
+				This.AdjustFixedPropertyValue(m.Ctrl, "Margin", m.XYRatio, m.NewXYRatio, .NULL., .T.)
+			ENDIF
 			* ajust font size always from its original setting (hence, taken as a "fixed" property)
 			This.AdjustFixedPropertyValue(m.Ctrl, "FontSize", m.XYRatio, m.NewXYRatio)
+			* if it is growing, margins are arranged afterward
+			IF m.IsGrowing
+				This.AdjustFixedPropertyValue(m.Ctrl, "Margin", m.XYRatio, m.NewXYRatio, .NULL., .T.)
+			ENDIF
 		ENDIF
 
 		* if we are growing, make sure we grow maximum dimensions before growing
@@ -843,7 +852,7 @@ Define Class DPIAwareManager As Custom
 
 	* AdjustFixedPropertyValue
 	* Adjusts the original value of a property to a new value.
-	FUNCTION AdjustFixedPropertyValue (Ctrl AS Object, Property AS String, Ratio AS Number, NewRatio AS Number, Excluded AS Number) AS Logical
+	FUNCTION AdjustFixedPropertyValue (Ctrl AS Object, Property AS String, Ratio AS Number, NewRatio AS Number, Excluded AS Number, Low AS Logical) AS Logical
 
 		LOCAL Adjusted AS Logical
 		LOCAL OriginalValue AS Number
@@ -862,7 +871,11 @@ Define Class DPIAwareManager As Custom
 					m.NewCurrentValue = m.OriginalValue * m.NewRatio
 
 					* store the final (rounded) value
-					STORE ROUND(m.NewCurrentValue, 0) TO ("m.Ctrl." + m.Property)
+					IF !m.Low
+						STORE ROUND(m.NewCurrentValue, 0) TO ("m.Ctrl." + m.Property)
+					ELSE
+						STORE FLOOR(m.NewCurrentValue) TO ("m.Ctrl." + m.Property)
+					ENDIF
 
 					* log the adjustment
 					TRY

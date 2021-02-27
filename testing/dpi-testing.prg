@@ -24,10 +24,10 @@ _Screen.AddObject("DPIAwareScreenManager", "ScreenManager")
 
 * a new menu pad to extend the system menu
 DEFINE PAD padDPIAware OF _MSYSMENU PROMPT "DPIAware"
-DEFINE POPUP popDPIAware MARGIN RELATIVE
+DEFINE POPUP popDPIAware MARGIN RELATIVE FONT "Segoe UI", 9
 ON PAD padDPIAware OF _MSYSMENU ACTIVATE POPUP popDPIAware
-DEFINE BAR 1 OF popDPIAware PROMPT "DPI-aware menu bars" FONT "Segoe UI", 9
-DEFINE BAR 2 OF popDPIAware PROMPT "Current scale: 100%" FONT "Segoe UI", 9
+DEFINE BAR 1 OF popDPIAware PROMPT "DPI-aware menu bars"
+DEFINE BAR 2 OF popDPIAware PROMPT "Current scale: 100%"
 
 ACTIVATE SCREEN
 
@@ -127,8 +127,9 @@ DEFINE CLASS ScreenManager AS DPIAwareScreenManager OF ../source/dpiawaremanager
 
 		m.NewFontSize = ROUND(9 * m.DPINewScale / 100, 0)
 
-		DEFINE BAR 1 OF popDPIAware PROMPT "DPI-aware menu bars" FONT "Segoe UI", m.NewFontSize
-		DEFINE BAR 2 OF popDPIAware PROMPT TEXTMERGE("Current scale: <<m.DPINewScale>>%") FONT "Segoe UI", m.NewFontSize
+		DEFINE POPUP popDPIAware MARGIN RELATIVE FONT "Segoe UI", m.NewFontSize
+		DEFINE BAR 1 OF popDPIAware PROMPT "DPI-aware menu bars"
+		DEFINE BAR 2 OF popDPIAware PROMPT TEXTMERGE("Current scale: <<m.DPINewScale>>%")
 
 	ENDFUNC
 
