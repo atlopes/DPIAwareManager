@@ -574,7 +574,7 @@ Define Class DPIAwareManager As Custom
 				IF BITAND(.ScrollBars, 0x02) != 0
 					m.FixedWeight = m.FixedWeight + SYSMETRIC(5) + 1
 				ENDIF
-				m.FixedWeight = m.FixedWeight + .ColumnCount * .GridLineWidth
+				m.FixedWeight = m.FixedWeight + .ColumnCount * .GridLineWidth + 2		&& grid's border width
 
 				* calculate how the fixed size elements impact the size of the columns
 				* growing will add extra size (as a proportion) to each column
