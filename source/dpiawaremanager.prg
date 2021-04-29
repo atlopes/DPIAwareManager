@@ -21,6 +21,9 @@ Define Class DPIAwareManager As Custom
 	WidthAdjustments = "2,6,8,10,12"
 	HeightAdjustments = "8,17,25,32,40"
 
+	* system function to gather information regarding DPI 
+	SystemInfoFunction = 0
+	
 	FUNCTION Init
 
 		DECLARE LONG GetDC IN WIN32API ;
@@ -33,11 +36,18 @@ Define Class DPIAwareManager As Custom
 			LONG hWnd, INTEGER Flags
 		DECLARE INTEGER GetMonitorInfo IN WIN32API ;
 			LONG hMonitor, STRING @ MonitorInfo
-		DECLARE INTEGER GetDpiForWindow IN WIN32API ;
-			LONG hWnd
+
 		TRY
 			DECLARE LONG GetDpiForMonitor IN SHCORE.DLL ;
 				LONG hMonitor, INTEGER dpiType, INTEGER @ dpiX, INTEGER @ dpiY
+			This.SystemInfoFunction = 1
+		CATCH
+		ENDTRY
+
+		TRY
+			DECLARE INTEGER GetDpiForWindow IN WIN32API ;
+				LONG hWnd
+			This.SystemInfoFunction = 2
 		CATCH
 		ENDTRY
 
@@ -83,14 +93,17 @@ Define Class DPIAwareManager As Custom
 
 		* use the best available function to get the information
 		TRY
-			m.dpiX = GetDpiForWindow(m.DPIAwareForm.HWnd)
-		CATCH
-			TRY
+			DO CASE
+			CASE This.SystemInfoFunction = 2
+				m.dpiX = GetDpiForWindow(m.DPIAwareForm.HWnd)
+			CASE This.SystemInfoFunction = 1
 				STORE 0 TO m.dpiX, m.dpiY
 				GetDpiForMonitor(m.DPIAwareForm.hMonitor, 0, @m.dpiX, @m.dpiY)
-			CATCH
+			OTHERWISE
 				m.dpiX = GetDeviceCaps(GetWindowDC(m.DPIAwareForm.HWnd), 88)
-			ENDTRY
+			ENDCASE
+		CATCH
+			m.dpiX = DPI_STANDARD_SCALE
 		ENDTRY
 
 		* returns a percentage relative to 96DPI (the standard DPI)
