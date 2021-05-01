@@ -103,7 +103,7 @@ Define Class DPIAwareManager As Custom
 				m.dpiX = GetDeviceCaps(GetWindowDC(m.DPIAwareForm.HWnd), 88)
 			ENDCASE
 		CATCH
-			m.dpiX = DPI_STANDARD_SCALE
+			m.dpiX = DPI_STANDARD
 		ENDTRY
 
 		* returns a percentage relative to 96DPI (the standard DPI)
@@ -361,7 +361,7 @@ Define Class DPIAwareManager As Custom
 	* Saves the original value of a property by creating a DPIAware_<property name> new property.
 	FUNCTION SaveOriginalProperty (Ctrl AS Object, Property AS String)
 
-		IF PEMSTATUS(m.Ctrl, m.Property, 5)
+		IF PEMSTATUS(m.Ctrl, m.Property, 5) AND TYPE("m.Ctrl." + m.Property) != "U"
 			This.AddDPIProperty(m.Ctrl, "DPIAware_" + m.Property, EVALUATE("m.Ctrl." + m.Property))
 		ENDIF
 
