@@ -7,7 +7,7 @@ SET PROCEDURE TO (SYS(16)) ADDITIVE
 
 #DEFINE DPI_STANDARD							96
 #DEFINE DPI_STANDARD_SCALE					100
-#DEFINE DPI_MAX_SCALE						225
+#DEFINE DPI_MAX_SCALE						300
 #DEFINE DPI_SCALE_INCREMENT				25
 
 #DEFINE DPIAW_NO_REPOSITION				0
@@ -16,14 +16,18 @@ SET PROCEDURE TO (SYS(16)) ADDITIVE
 
 Define Class DPIAwareManager As Custom
 
-	* compensation for what is cut from a form when changing DPI (from 125 to 225%)
-	* to be confirmed...
-	WidthAdjustments = "2,6,8,10,12"
-	HeightAdjustments = "8,17,25,32,40"
+	* process DPI awareness type
+	AwarenessType = 0
 
-	* system function to gather information regarding DPI 
+	* compensation for what is cut from a form when changing DPI (from 125 to 300%)
+	* to be confirmed...
+	WidthAdjustments = "2,6,8,10,12,14,16,18"
+	HeightAdjustments = "8,17,25,32,40,49,56,63"
+
+	* system function to gather information regarding DPI
+	HIDDEN SystemInfoFunction
 	SystemInfoFunction = 0
-	
+
 	FUNCTION Init
 
 		DECLARE LONG GetDC IN WIN32API ;
@@ -48,6 +52,24 @@ Define Class DPIAwareManager As Custom
 			DECLARE INTEGER GetDpiForWindow IN WIN32API ;
 				LONG hWnd
 			This.SystemInfoFunction = 2
+		CATCH
+		ENDTRY
+
+		* get the awareness type of the process
+		TRY
+			DECLARE INTEGER IsProcessDPIAware IN WIN32API
+			IF IsProcessDPIAware() != 0
+				This.AwarenessType = 1
+			ENDIF
+			TRY
+				DECLARE INTEGER GetProcessDpiAwareness IN Shcore.dll LONG Process, LONG @ Awareness
+				LOCAL Awareness AS Integer
+				m.Awareness = 0
+				IF GetProcessDpiAwareness(0, @m.Awareness) == 0
+					This.AwarenessType = m.Awareness
+				ENDIF
+			CATCH
+			ENDTRY
 		CATCH
 		ENDTRY
 
@@ -96,7 +118,7 @@ Define Class DPIAwareManager As Custom
 			DO CASE
 			CASE This.SystemInfoFunction = 2
 				m.dpiX = GetDpiForWindow(m.DPIAwareForm.HWnd)
-			CASE This.SystemInfoFunction = 1
+			CASE This.SystemInfoFunction = 1		&& not for Per-Monitor aware (AwarenessType = 2)
 				STORE 0 TO m.dpiX, m.dpiY
 				GetDpiForMonitor(m.DPIAwareForm.hMonitor, 0, @m.dpiX, @m.dpiY)
 			OTHERWISE

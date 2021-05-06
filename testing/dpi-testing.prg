@@ -93,8 +93,15 @@ FOR m.NumSCX = 1 TO ADIR(m.SCX, "unmanagedforms\*.scx")
 
 ENDFOR
 
-* remember how to quit
-MESSAGEBOX("Close a window to quit!", 64, "DPI-Testing")
+* remember how to quit, and display the type of DPI awareness of our application
+LOCAL ARRAY AwarenessTypes[4]
+m.AwarenessTypes[1] = "PROCESS_DPI_UNAWARE"
+m.AwarenessTypes[2] = "PROCESS_SYSTEM_DPI_AWARE"
+m.AwarenessTypes[3] = "PROCESS_PER_MONITOR_DPI_AWARE"
+m.AwarenessTypes[4] = "UNKNOWN"
+
+MESSAGEBOX("Close a window to quit!" + 0h0d0d + ;
+	"Awareness type: " + m.AwarenessTypes[MIN(MAX(m.DPI.AwarenessType, 0), 3) + 1], 64, "DPI-Testing")
 
 READ EVENTS
 
