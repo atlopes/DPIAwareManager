@@ -202,7 +202,7 @@ Define Class DPIAwareManager As Custom
 		ENDIF
 
 		* proceed to the actual method that performs the rescaling (the new DPI scale is passed as a percentage)
-		RETURN This.ChangeFormDPIScale(m.DPIAwareForm, BITAND(m.wParam, 0x0FF) / DPI_STANDARD * DPI_STANDARD_SCALE)
+		RETURN This.ChangeFormDPIScale(m.DPIAwareForm, BITAND(m.wParam, 0x07FFF) / DPI_STANDARD * DPI_STANDARD_SCALE)
 
 	ENDFUNC
 
