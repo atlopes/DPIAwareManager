@@ -2,6 +2,7 @@
 SET PROCEDURE TO (SYS(16)) ADDITIVE
 
 #DEFINE WM_DPICHANGED						0x02E0
+#DEFINE WM_SETICON							0x0080
 
 #DEFINE SIZEOF_MONITORINFO					0h28000000
 
@@ -13,6 +14,10 @@ SET PROCEDURE TO (SYS(16)) ADDITIVE
 #DEFINE DPIAW_NO_REPOSITION				0
 #DEFINE DPIAW_RELATIVE_TOP_LEFT			0x01
 #DEFINE DPIAW_CONSTRAINT_DIMENSION		0x02
+
+#DEFINE ICON_SMALL	0
+#DEFINE ICON_BIG		1
+
 
 Define Class DPIAwareManager As Custom
 
@@ -40,6 +45,10 @@ Define Class DPIAwareManager As Custom
 			LONG hWnd, INTEGER Flags
 		DECLARE INTEGER GetMonitorInfo IN WIN32API ;
 			LONG hMonitor, STRING @ MonitorInfo
+		DECLARE INTEGER ExtractIcon IN shell32 ;
+			INTEGER hInst, STRING FileName, INTEGER IndexIcon
+		DECLARE INTEGER SendMessage IN user32 ;
+			INTEGER hWnd, INTEGER Msg, INTEGER wParam, INTEGER lParam
 
 		TRY
 			DECLARE LONG GetDpiForMonitor IN SHCORE.DLL ;
@@ -827,8 +836,13 @@ Define Class DPIAwareManager As Custom
 			This.AdjustPropertyValue(m.Ctrl, "Left", m.XYRatio, m.NewXYRatio)
 		ENDIF
 
-		* finally, take care of the alternate graphics the control may have defined for the new scale
+		* take care of the alternate graphics the control may have defined for the new scale
 		This.AdjustGraphicAlternatives(m.Ctrl, m.NewDPIScale)
+
+		* reset the form's icon
+		IF m.IsForm
+			This.ResetIcon(m.Ctrl)
+		ENDIF
 
 	ENDFUNC
 
@@ -985,6 +999,51 @@ Define Class DPIAwareManager As Custom
 		* if we found an alternative, that will be the new value for the property
 		IF !EMPTY(m.BestAlternative)
 			STORE m.BestAlternative TO ("m.Ctrl." + m.Property)
+		ENDIF
+
+	ENDFUNC
+
+	* ResetIcon
+	* Reset the icon for (hopefully) better quality
+	FUNCTION ResetIcon (Ctrl AS Object)
+
+		LOCAL SafetyStatus AS String
+		LOCAL IconFile AS String
+		LOCAL hIcon AS Integer
+
+		* only for Forms
+		IF !m.Ctrl.BaseClass == "Form" OR EMPTY(m.Ctrl.Icon)
+			RETURN
+		ENDIF
+			
+		m.SafetyStatus = SET("Safety")
+		SET SAFETY OFF
+
+		* use a temporary file to make sure Windows sees the icon
+		m.IconFile = ADDBS(SYS(2023)) + "~dpiawm" + SYS(3) + ".ico"
+		TRY
+			STRTOFILE(FILETOSTR(m.Ctrl.Icon), m.IconFile)
+		CATCH
+			m.IconFile = ""
+		ENDTRY
+
+		IF m.SafetyStatus == "ON"
+			SET SAFETY ON
+		ENDIF
+
+		IF !EMPTY(m.IconFile)
+			* success in creating the file? get the icon from the temporary file and reset it
+			m.hIcon = ExtractIcon(0, m.IconFile, 0)
+			SendMessage(m.Ctrl.hWnd, WM_SETICON, ICON_SMALL, m.hIcon)
+			* use it also for the "big" version of top level forms
+			IF m.Ctrl == _Screen OR m.Ctrl.ShowWindow == 2
+				SendMessage(m.Ctrl.hWnd, WM_SETICON, ICON_BIG, m.hIcon)
+			ENDIF
+			* clean up
+			TRY
+				ERASE (m.IconFile)
+			CATCH
+			ENDTRY
 		ENDIF
 
 	ENDFUNC
