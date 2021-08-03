@@ -1,4 +1,5 @@
 _翻译：xinjie   2021.08.03_
+
 _译者注：最新版本的请参考 [atlopes/DPIAwareManager](https://github.com/atlopes/DPIAwareManager)_
 
 # DPIAwareManager
