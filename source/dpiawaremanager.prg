@@ -107,6 +107,9 @@ Define Class DPIAwareManager As Custom
 
 		* if the form was created in a non 100% scale monitor, perform an initial scaling without preadjustment
 		IF m.AForm.DPINewScale != DPI_STANDARD_SCALE
+			IF m.AForm = _Screen AND PEMSTATUS(_Screen, "DPIAwareScreenManager", 5)
+				_Screen.DPIAwareScreenManager.SelfManage(DPI_STANDARD_SCALE, m.AForm.DPINewScale) 
+			ENDIF
 			This.Scale(m.AForm, DPI_STANDARD_SCALE, m.AForm.DPINewScale, .T.)
 		ENDIF
 
@@ -254,7 +257,8 @@ Define Class DPIAwareManager As Custom
 		IF m.NewDPIScale != m.DPIAwareForm.DPIScale
 
 			LOCAL IsMaximized AS Logical
-			m.IsMaximized = (m.DPIAwareForm.WindowState = 2)
+
+			m.IsMaximized = (m.DPIAwareForm.WindowState == 2)
 
 			m.DPIAwareForm.DPINewScale = m.NewDPIScale
 			m.DPIAwareForm.LockScreen = .T.
