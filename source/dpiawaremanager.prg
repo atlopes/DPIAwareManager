@@ -437,11 +437,12 @@ Define Class DPIAwareManager As Custom
 	FUNCTION SaveGraphicAlternatives (Ctrl AS Object, Property AS String)
 
 		LOCAL AlternativesList AS String
-		LOCAL AlternativeLevel AS Integer
+		LOCAL AlternativeLevel AS String
 		LOCAL ARRAY Properties[1]
 		LOCAL PropertyIndex AS Integer
 		LOCAL PropertyCheck AS String
 		LOCAL PropertyCheckLen AS Integer
+		LOCAL Property100 AS Logical
 
 		IF !PEMSTATUS(m.Ctrl, m.Property, 5)
 			RETURN
@@ -450,19 +451,29 @@ Define Class DPIAwareManager As Custom
 		m.AlternativesList = ""
 		m.PropertyCheck = UPPER(m.Property)
 		m.PropertyCheckLen = LEN(m.PropertyCheck)
+		m.Property100 = .F.
 
-		* look for all alternatives and create a single comma separeted list 
+		* look for all alternatives and create a comma separated list 
 		FOR m.PropertyIndex = 1 TO AMEMBERS(m.Properties, m.Ctrl, 0)
 			IF LEFT(m.Properties[m.PropertyIndex], m.PropertyCheckLen) == m.PropertyCheck
 				m.AlternativeLevel = SUBSTR(m.Properties[m.PropertyIndex], m.PropertyCheckLen + 1)
 				IF m.AlternativeLevel == LTRIM(STR(VAL(m.AlternativeLevel))) AND VAL(m.AlternativeLevel) >= DPI_STANDARD_SCALE
 					m.AlternativesList = m.AlternativesList + IIF(EMPTY(m.AlternativesList), "", ",") + m.AlternativeLevel
+					IF !m.Property100
+						m.Property100 = m.AlternativeLevel == "100"
+					ENDIF
 				ENDIF
 			ENDIF
 		ENDFOR
 
-		* if a list was found, store it at a new object property
+		* if a list was found, store it in a new object property
 		IF !EMPTY(m.AlternativesList)
+			* but first make sure there is a version of the graphical alternative for the 100% scale
+			* if it was not set explicitly at design time
+			IF !m.Property100
+				This.AddDPIProperty(m.Ctrl, m.Property + "100", EVALUATE("m.Ctrl." + m.Property))
+				m.AlternativesList = m.AlternativesList + ",100"
+			ENDIF
 			This.AddDPIProperty(m.Ctrl, "DPIAlternative_" + m.Property, m.AlternativesList)
 		ENDIF
 
