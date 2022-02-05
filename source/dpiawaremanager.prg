@@ -87,15 +87,18 @@ Define Class DPIAwareManager As Custom
 	* Manage
 	* Puts a form under DPI-awareness management
 	* It should be called before the form is shown
-	FUNCTION Manage (AForm AS Form) AS Void
+	FUNCTION Manage (AForm AS Form, Constraints AS Integer) AS Void
 
 		* add DPI-aware related properties
 		This.AddDPIProperty(m.AForm, "hMonitor", MonitorFromWindow(m.AForm.HWnd, 0))
 		This.AddDPIProperty(m.AForm, "DPIAwareManager", This)
 		This.AddDPIProperty(m.AForm, "DPIScale", This.GetMonitorDPIScale(m.AForm))
 		This.AddDPIProperty(m.AForm, "DPINewScale", m.AForm.DPIScale)
-		This.AddDPIProperty(m.AForm, "DPIAutoConstraint", IIF(m.AForm = _Screen OR m.AForm.ShowWindow = 2, DPIAW_NO_REPOSITION, DPIAW_RELATIVE_TOP_LEFT))
-
+		This.AddDPIProperty(m.AForm, "DPIAutoConstraint", ;
+			IIF(PCOUNT() == 1, ;
+				IIF(m.AForm == _Screen OR m.AForm.ShowWindow == 2, DPIAW_NO_REPOSITION, DPIAW_RELATIVE_TOP_LEFT), ;
+				m.Constraints))
+		
 		* save the original value of dimensional and positional properties of the form
 		This.SaveContainer(m.AForm)
 
