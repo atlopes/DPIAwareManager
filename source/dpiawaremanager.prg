@@ -363,8 +363,10 @@ Define Class DPIAwareManager As Custom
 
 		LOCAL SubCtrl AS Object
 
-		IF !m.Ctrl.BaseClass == "Custom"
+		IF !m.Ctrl.BaseClass $ "Custom,Timer"
 			This.SaveOriginalInfo(m.Ctrl)
+		ELSE
+			RETURN
 		ENDIF
 
 		DO CASE 
@@ -429,6 +431,8 @@ Define Class DPIAwareManager As Custom
 		This.SaveGraphicAlternatives(m.Ctrl, "Picture")
 		This.SaveGraphicAlternatives(m.Ctrl, "PictureVal")
 		This.SaveGraphicAlternatives(m.Ctrl, "Icon")
+		This.SaveGraphicAlternatives(m.Ctrl, "DisabledPicture")
+		This.SaveGraphicAlternatives(m.Ctrl, "DownPicture")
 
 	ENDFUNC
 
@@ -446,6 +450,7 @@ Define Class DPIAwareManager As Custom
 		LOCAL PropertyCheck AS String
 		LOCAL PropertyCheckLen AS Integer
 		LOCAL Property100 AS Logical
+		LOCAL Level100 AS String
 
 		IF !PEMSTATUS(m.Ctrl, m.Property, 5)
 			RETURN
@@ -455,6 +460,7 @@ Define Class DPIAwareManager As Custom
 		m.PropertyCheck = UPPER(m.Property)
 		m.PropertyCheckLen = LEN(m.PropertyCheck)
 		m.Property100 = .F.
+		m.Level100 = "100"
 
 		* look for all alternatives and create a comma separated list 
 		FOR m.PropertyIndex = 1 TO AMEMBERS(m.Properties, m.Ctrl, 0)
@@ -463,7 +469,7 @@ Define Class DPIAwareManager As Custom
 				IF m.AlternativeLevel == LTRIM(STR(VAL(m.AlternativeLevel))) AND VAL(m.AlternativeLevel) >= DPI_STANDARD_SCALE
 					m.AlternativesList = m.AlternativesList + IIF(EMPTY(m.AlternativesList), "", ",") + m.AlternativeLevel
 					IF !m.Property100
-						m.Property100 = m.AlternativeLevel == "100"
+						m.Property100 = m.AlternativeLevel == m.Level100
 					ENDIF
 				ENDIF
 			ENDIF
@@ -474,8 +480,8 @@ Define Class DPIAwareManager As Custom
 			* but first make sure there is a version of the graphical alternative for the 100% scale
 			* if it was not set explicitly at design time
 			IF !m.Property100
-				This.AddDPIProperty(m.Ctrl, m.Property + "100", EVALUATE("m.Ctrl." + m.Property))
-				m.AlternativesList = m.AlternativesList + ",100"
+				This.AddDPIProperty(m.Ctrl, m.Property + m.Level100, EVALUATE("m.Ctrl." + m.Property))
+				m.AlternativesList = m.AlternativesList + "," + m.Level100
 			ENDIF
 			This.AddDPIProperty(m.Ctrl, "DPIAlternative_" + m.Property, m.AlternativesList)
 		ENDIF
@@ -578,7 +584,7 @@ Define Class DPIAwareManager As Custom
 			m.AutoSizeCtrl = .F.
 		ENDIF
 
-		IF !m.Ctrl.BaseClass == 'Custom'
+		IF !m.Ctrl.BaseClass $ 'Custom,Timer'
 			This.AdjustSize(m.Ctrl, m.DPIScale, m.DPINewScale)
 		ENDIF
 
@@ -969,34 +975,35 @@ Define Class DPIAwareManager As Custom
 	* Adjusts the value of graphic properties by selecting an appropriate alternative.
 	FUNCTION AdjustGraphicAlternatives (Ctrl AS Object, NewDPIScale AS Number)
 
-		IF PEMSTATUS(m.Ctrl, "DPIAlternative_Picture", 5)
-			This.FindGraphicAlternative(m.Ctrl, "Picture", m.Ctrl.DPIAlternative_Picture, m.NewDPIScale)
-		ENDIF
-
-		IF PEMSTATUS(m.Ctrl, "DPIAlternative_PictureVal", 5)
-			This.FindGraphicAlternative(m.Ctrl, "PictureVal", m.Ctrl.DPIAlternative_PictureVal, m.NewDPIScale)
-		ENDIF
-
-		IF PEMSTATUS(m.Ctrl, "DPIAlternative_Icon", 5)
-			This.FindGraphicAlternative(m.Ctrl, "Icon", m.Ctrl.DPIAlternative_Icon, m.NewDPIScale)
-		ENDIF
+		This.FindGraphicAlternative(m.Ctrl, "Picture", m.NewDPIScale)
+		This.FindGraphicAlternative(m.Ctrl, "PictureVal", m.NewDPIScale)
+		This.FindGraphicAlternative(m.Ctrl, "Icon", m.NewDPIScale)
+		This.FindGraphicAlternative(m.Ctrl, "DisabledPicture", m.NewDPIScale)
+		This.FindGraphicAlternative(m.Ctrl, "DownPicture", m.NewDPIScale)
 
 	ENDFUNC
 
 	* FindGraphicAlternative
-	* Finds a best alternate graphic for the new scale.
-	FUNCTION FindGraphicAlternative (Ctrl AS Object, Property AS String, Alternatives AS String, DPIScale AS Number)
+	* Finds a best alternative graphic for the new scale.
+	FUNCTION FindGraphicAlternative (Ctrl AS Object, Property AS String, DPIScale AS Number)
 
+		LOCAL Alternatives AS String
 		LOCAL ARRAY AlternativeScales[1]
 		LOCAL AlternativesIndex AS Integer
 		LOCAL BestAlternative AS String
 		LOCAL BestDifference AS Integer, Difference AS Integer
 
+		* if there isn't an alternative list, quit looking into it
+		m.Alternatives = "DPIAlternative_" + m.Property
+		IF !PEMSTATUS(m.Ctrl, m.Alternatives, 5)
+			RETURN
+		ENDIF
+
 		BestDifference = -1
 		BestAlternative = ""
 
 		* go through the list of scales for which there is an alternative
-		FOR m.AlternativesIndex = 1 TO ALINES(m.AlternativeScales, m.Alternatives, 0, ",")
+		FOR m.AlternativesIndex = 1 TO ALINES(m.AlternativeScales, EVALUATE("m.Ctrl." + m.Alternatives), 0, ",")
 
 			* calculate the difference for the new scale
 			m.Difference = VAL(m.AlternativeScales[m.AlternativesIndex]) - m.DPIScale
