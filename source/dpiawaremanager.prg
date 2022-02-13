@@ -236,7 +236,7 @@ Define Class DPIAwareManager As Custom
 			IF m.DPIAwareForm = _Screen
 
 				FOR EACH m.DPIAwareForm AS Form IN _Screen.Forms
-					IF m.DPIAwareForm.ShowWindow = 0
+					IF m.DPIAwareForm.ShowWindow = 0 AND PEMSTATUS(m.DPIAwareForm, "DPIAware", 5) AND m.DPIAwareForm.DPIAware
 						This.ChangeFormDPIScale(m.DPIAwareForm, _Screen.DPIScale)
 					ENDIF
 				ENDFOR
