@@ -874,6 +874,7 @@ Define Class DPIAwareManager As Custom
 	* Adjusts the value of a property to a new value.
 	FUNCTION AdjustPropertyValue (Ctrl AS Object, Property AS String, Ratio AS Number, NewRatio AS Number, Excluded AS Number, ExtraRatio AS Number) AS Logical
 
+		LOCAL CtrlProperty AS String
 		LOCAL Adjusted AS Logical
 		LOCAL OriginalValue AS Number
 		LOCAL CurrentValue AS Number
@@ -890,7 +891,8 @@ Define Class DPIAwareManager As Custom
 				IF PCOUNT() < 5 OR ISNULL(m.Excluded) OR m.Excluded != m.OriginalValue
 
 					* get the current value, stored in the property, and calculate the new one for a new scale
-					m.CurrentValue = EVALUATE("m.Ctrl." + m.Property)
+					m.CtrlProperty = "m.Ctrl." + m.Property
+					m.CurrentValue = EVALUATE(m.CtrlProperty)
 					IF PCOUNT() < 6
 						m.NewAdjustedRatio = m.NewRatio
 					ELSE
@@ -899,7 +901,7 @@ Define Class DPIAwareManager As Custom
 					m.NewCurrentValue = m.CurrentValue / m.Ratio * m.NewAdjustedRatio
 
 					* store the final (rounded) value
-					STORE ROUND(m.NewCurrentValue, 0) TO ("m.Ctrl." + m.Property)
+					STORE ROUND(m.NewCurrentValue, 0) TO (m.CtrlProperty)
 
 					* log the adjustment
 					TRY
@@ -907,7 +909,7 @@ Define Class DPIAwareManager As Custom
 							INSERT INTO DPIAwareManagerLog (ControlName, ClassName, Property, Original, Ratio, NewRatio, ;
 									FixedProperty, ScaledBefore, Calculated, Stored) ;
 								VALUES (m.Ctrl.Name, m.Ctrl.Class, m.Property, m.OriginalValue, m.Ratio, m.NewAdjustedRatio, ;
-									.F., m.CurrentValue, m.NewCurrentValue, EVALUATE("m.Ctrl." + m.Property))
+									.F., m.CurrentValue, m.NewCurrentValue, EVALUATE(m.CtrlProperty))
 						ENDIF
 					CATCH
 					ENDTRY
@@ -927,6 +929,7 @@ Define Class DPIAwareManager As Custom
 	* Adjusts the original value of a property to a new value.
 	FUNCTION AdjustFixedPropertyValue (Ctrl AS Object, Property AS String, Ratio AS Number, NewRatio AS Number, Excluded AS Number, Low AS Logical) AS Logical
 
+		LOCAL CtrlProperty AS String
 		LOCAL Adjusted AS Logical
 		LOCAL OriginalValue AS Number
 		LOCAL NewCurrentValue AS Number
@@ -944,10 +947,11 @@ Define Class DPIAwareManager As Custom
 					m.NewCurrentValue = m.OriginalValue * m.NewRatio
 
 					* store the final (rounded) value
+					m.CtrlProperty = "m.Ctrl." + m.Property
 					IF !m.Low
-						STORE ROUND(m.NewCurrentValue, 0) TO ("m.Ctrl." + m.Property)
+						STORE ROUND(m.NewCurrentValue, 0) TO (m.CtrlProperty)
 					ELSE
-						STORE FLOOR(m.NewCurrentValue) TO ("m.Ctrl." + m.Property)
+						STORE FLOOR(m.NewCurrentValue) TO (m.CtrlProperty)
 					ENDIF
 
 					* log the adjustment
@@ -956,7 +960,7 @@ Define Class DPIAwareManager As Custom
 							INSERT INTO DPIAwareManagerLog (ControlName, ClassName, Property, Original, Ratio, NewRatio, ;
 									FixedProperty, ScaledBefore, Calculated, Stored) ;
 								VALUES (m.Ctrl.Name, m.Ctrl.Class, m.Property, m.OriginalValue, m.Ratio, m.NewRatio, ;
-									.T., m.OriginalValue, m.NewCurrentValue, EVALUATE("m.Ctrl." + m.Property))
+									.T., m.OriginalValue, m.NewCurrentValue, EVALUATE(m.CtrlProperty))
 						ENDIF
 					CATCH
 					ENDTRY
@@ -987,6 +991,7 @@ Define Class DPIAwareManager As Custom
 	* Finds a best alternative graphic for the new scale.
 	FUNCTION FindGraphicAlternative (Ctrl AS Object, Property AS String, DPIScale AS Number)
 
+		LOCAL CtrlProperty AS String
 		LOCAL Alternatives AS String
 		LOCAL ARRAY AlternativeScales[1]
 		LOCAL AlternativesIndex AS Integer
@@ -999,6 +1004,7 @@ Define Class DPIAwareManager As Custom
 			RETURN
 		ENDIF
 
+		m.CtrlProperty = "m.Ctrl." + m.Property
 		BestDifference = -1
 		BestAlternative = ""
 
@@ -1010,20 +1016,20 @@ Define Class DPIAwareManager As Custom
 
 			* there is a match! get the value in the alternate graphic property and stop searching
 			IF m.Difference = 0
-				m.BestAlternative = EVALUATE("m.Ctrl." + m.Property + m.AlternativeScales[m.AlternativesIndex])
+				m.BestAlternative = EVALUATE(m.CtrlProperty + m.AlternativeScales[m.AlternativesIndex])
 				EXIT
 			ENDIF
 
 			* but if not and this one was the best yet, use it and continue looking
 			IF m.Difference > 0 AND (m.BestDifference < 0 OR m.Difference < m.BestDifference)
-				m.BestAlternative = EVALUATE("m.Ctrl." + m.Property + m.AlternativeScales[m.AlternativesIndex])
+				m.BestAlternative = EVALUATE(m.CtrlProperty + m.AlternativeScales[m.AlternativesIndex])
 				m.BestDifference = m.Difference
 			ENDIF
 		ENDFOR
 
 		* if we found an alternative, that will be the new value for the property
 		IF !EMPTY(m.BestAlternative)
-			STORE m.BestAlternative TO ("m.Ctrl." + m.Property)
+			STORE m.BestAlternative TO (m.CtrlProperty)
 		ENDIF
 
 	ENDFUNC
@@ -1102,7 +1108,7 @@ Define Class DPIAwareManager As Custom
 			m.ThisObject = m.ThisObject.Parent
 		ENDDO
 
-		RETURN IIF(m.ThisObject.BaseClass == "Form", m.ThisObject, .NULL)
+		RETURN IIF(m.ThisObject.BaseClass == "Form", m.ThisObject, .NULL.)
 			
 	ENDFUNC
 
