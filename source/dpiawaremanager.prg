@@ -98,6 +98,7 @@ Define Class DPIAwareManager As Custom
 			IIF(PCOUNT() == 1, ;
 				IIF(m.AForm == _Screen OR m.AForm.ShowWindow == 2, DPIAW_NO_REPOSITION, DPIAW_RELATIVE_TOP_LEFT), ;
 				m.Constraints))
+		This.AddDPIProperty(m.AForm, "DPIManagerEvent", "Manage")
 		
 		* save the original value of dimensional and positional properties of the form
 		This.SaveContainer(m.AForm)
@@ -216,6 +217,8 @@ Define Class DPIAwareManager As Custom
 			RETURN 0
 		ENDIF
 
+		m.DPIAwareForm.DPIManagerEvent = "WindowsMessage"
+
 		* proceed to the actual method that performs the rescaling (the new DPI scale is passed as a percentage)
 		RETURN This.ChangeFormDPIScale(m.DPIAwareForm, BITAND(m.wParam, 0x07FFF) / DPI_STANDARD * DPI_STANDARD_SCALE)
 
@@ -232,6 +235,8 @@ Define Class DPIAwareManager As Custom
 		m.DPIAwareForm = m.SourceEvent(1)
 
 		IF This.ChangeFormDPIScale(m.DPIAwareForm, This.GetMonitorDPIScale(m.DPIAwareForm)) = 0
+
+			m.DPIAwareForm.DPIManagerEvent = "Moved"
 
 			IF m.DPIAwareForm = _Screen
 
@@ -1158,6 +1163,14 @@ Define Class DPIAwareManager As Custom
 	FUNCTION GetScaledValue (Unscaled AS Number, Scale AS Integer) AS Number
 
 		RETURN m.Unscaled * This.GetXYRatio(m.Scale)
+
+	ENDFUNC
+
+	* GetUnscaledValue
+	* Unscale a value, given a scale
+	FUNCTION GetUnscaledValue (Scaled AS Number, Scale AS Integer) AS Number
+
+		RETURN m.Scaled / This.GetXYRatio(m.Scale)
 
 	ENDFUNC
 
