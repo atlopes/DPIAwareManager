@@ -29,6 +29,11 @@ Define Class DPIAwareManager As Custom
 	WidthAdjustments = "2,6,8,10,12,14,16,18"
 	HeightAdjustments = "8,17,25,32,40,49,56,63"
 
+	* the collection of alternative fonts
+	ADD OBJECT PROTECTED AlternativeFontNames AS Collection
+	HIDDEN AlternativeFontNamesScale
+	AlternativeFontNamesScale = DPI_STANDARD_SCALE
+
 	* system function to gather information regarding DPI
 	HIDDEN SystemInfoFunction
 	SystemInfoFunction = 0
@@ -116,6 +121,28 @@ Define Class DPIAwareManager As Custom
 			ENDIF
 			This.Scale(m.AForm, DPI_STANDARD_SCALE, m.AForm.DPINewScale, .T.)
 		ENDIF
+
+	ENDFUNC
+
+	* ManageFont
+	* Prepare a font to be managed whenever it occurs as a FontName control property
+	FUNCTION ManageFont (OriginalFontName AS String, Scale AS Integer, AdjustedFontName AS String)
+
+		LOCAL FontIndex AS Integer
+		LOCAL AlternativeFont AS DPIAwareAlternativeFont
+
+		* locate an existing font name controller object in the collection
+		m.FontIndex = This.AlternativeFontNames.GetKey(UPPER(m.OriginalFontName))
+		* create it, if it does not exist
+		IF m.FontIndex == 0
+			m.AlternativeFont = CREATEOBJECT("DPIAwareAlternativeFont", m.OriginalFontName)
+			This.AlternativeFontNames.Add(m.AlternativeFont, UPPER(m.OriginalFontName))
+		ELSE
+			m.AlternativeFont = This.AlternativeFontNames.Item(m.FontIndex)
+		ENDIF
+
+		* add the alternative font name for a given scale (and up)
+		m.AlternativeFont.AddAlternative(m.Scale, m.AdjustedFontName)
 
 	ENDFUNC
 
@@ -261,7 +288,7 @@ Define Class DPIAwareManager As Custom
 		* refresh information on the monitor where the form is being displayed
 		m.DPIAwareForm.hMonitor = MonitorFromWindow(m.DPIAwareForm.HWnd, 0)
 
-		* act only if the scale of the form has changed (the _Screen may only have moved)
+		* act only if the scale of the form has changed (the _Screen may have only moved)
 		IF m.NewDPIScale != m.DPIAwareForm.DPIScale
 
 			LOCAL IsMaximized AS Logical
@@ -428,6 +455,7 @@ Define Class DPIAwareManager As Custom
 		This.SaveOriginalProperty(m.Ctrl, "MaxHeight")
 		This.SaveOriginalProperty(m.Ctrl, "Left")
 		This.SaveOriginalProperty(m.Ctrl, "Top")
+		This.SaveOriginalProperty(m.Ctrl, "FontName")
 		This.SaveOriginalProperty(m.Ctrl, "FontSize")
 		This.SaveOriginalProperty(m.Ctrl, "Margin")
 		This.SaveOriginalProperty(m.Ctrl, "RowHeight")
@@ -504,6 +532,16 @@ Define Class DPIAwareManager As Custom
 		LOCAL IsForm AS Logical
 		LOCAL SubCtrl AS Object
 		LOCAL Scalable AS Logical
+		LOCAL AlternativeFont AS DPIAwareAlternativeFont
+
+		* prepare font name alternatives for a new scale
+		* aternatives will persist until a new scale is set
+		IF m.DPINewScale != This.AlternativeFontNamesScale
+			FOR EACH m.AlternativeFont IN This.AlternativeFontNames
+				m.AlternativeFont.FindAlternative(m.DPINewScale)
+			ENDFOR
+			This.AlternativeFontNamesScale = m.DPINewScale
+		ENDIF
 
 		m.IsForm = m.Ctnr.BaseClass == 'Form'
 		IF m.IsForm
@@ -825,7 +863,9 @@ Define Class DPIAwareManager As Custom
 			IF !m.IsGrowing
 				This.AdjustFixedPropertyValue(m.Ctrl, "Margin", m.XYRatio, m.NewXYRatio, .NULL., .T.)
 			ENDIF
-			* ajust font size always from its original setting (hence, taken as a "fixed" property)
+			* adjust the font name before adjusting its size
+			This.AdjustFontNameAlternative(m.Ctrl)
+			* adjust font size always from its original setting (hence, taken as a "fixed" property)
 			This.AdjustFixedPropertyValue(m.Ctrl, "FontSize", m.XYRatio, m.NewXYRatio)
 			* if it is growing, margins are arranged afterward
 			IF m.IsGrowing
@@ -980,6 +1020,51 @@ Define Class DPIAwareManager As Custom
 
 	ENDFUNC
 
+	* AdjustFontNameAlternative
+	* Adjusts the name of a font by using the appropriate alternative
+	FUNCTION AdjustFontNameAlternative (Ctrl AS Object)
+
+		LOCAL AlternativeFontName AS String
+		LOCAL FontNameKey AS String
+		LOCAL FontIndex AS Integer
+
+		IF PEMSTATUS(m.Ctrl, "DPIAware_FontName", 5)
+			m.FontNameKey = UPPER(m.Ctrl.DPIAware_FontName)
+			m.FontIndex = 0
+			* use the original font name to locate the current alternative
+			* try to locate the best alternative for the font style
+			TRY
+				IF m.Ctrl.FontBold AND m.Ctrl.FontItalic
+					m.FontIndex = This.AlternativeFontNames.GetKey(m.FontNameKey + ",BI")
+				ENDIF
+				IF m.FontIndex == 0 AND m.Ctrl.FontBold
+					m.FontIndex = This.AlternativeFontNames.GetKey(m.FontNameKey + ",B")
+				ENDIF
+				IF m.FontIndex == 0 AND m.Ctrl.FontItalic
+					m.FontIndex = This.AlternativeFontNames.GetKey(m.FontNameKey + ",I")
+				ENDIF
+				IF m.FontIndex == 0 AND !m.Ctrl.FontBold AND !m.Ctrl.FontItalic
+					m.FontIndex = This.AlternativeFontNames.GetKey(m.FontNameKey + ",N")
+				ENDIF
+			CATCH
+			ENDTRY
+			* try an unstyled alternative, if a styled one was not found
+			m.FontIndex = EVL(m.FontIndex, This.AlternativeFontNames.GetKey(m.FontNameKey))
+			* if it exists
+			IF m.FontIndex != 0
+				TRY
+					* set it, if needed
+					m.AlternativeFontName = This.AlternativeFontNames.Item(m.FontIndex).AlternativeFontName
+					IF ! m.Ctrl.FontName == m.AlternativeFontName
+						m.Ctrl.FontName = m.AlternativeFontName
+					ENDIF
+				CATCH
+				ENDTRY
+			ENDIF
+		ENDIF
+
+	ENDFUNC
+		
 	* AdjustGraphicAlternatives
 	* Adjusts the value of graphic properties by selecting an appropriate alternative.
 	FUNCTION AdjustGraphicAlternatives (Ctrl AS Object, NewDPIScale AS Number)
@@ -1175,6 +1260,68 @@ Define Class DPIAwareManager As Custom
 	ENDFUNC
 
 ENDDEFINE
+
+* DPIAwareAlternativeFont
+* A class to register alternative fonts depending on the scale
+DEFINE CLASS DPIAwareAlternativeFont AS Custom
+
+	AlternativeCount = 0
+	DIMENSION Scales [1]
+	DIMENSION FontNames [1]
+
+	AlternativeFontName = ""
+
+	FUNCTION Init (BaseFontName AS String)
+
+		This.AlternativeCount = 1
+		This.Scales[1] = 100
+		* discard the style clause to set the base font name
+		This.FontNames[1] = LEFT(m.BaseFontName, EVL(RAT(",", m.BaseFontName), LEN(m.BaseFontName) + 1) - 1)
+
+	ENDFUNC
+
+	FUNCTION AddAlternative (Scale AS Integer, AlternativeFontName AS String)
+
+		This.AlternativeCount = This.AlternativeCount + 1
+		DIMENSION This.Scales[This.AlternativeCount]
+		DIMENSION This.FontNames[This.AlternativeCount]
+		This.Scales[This.AlternativeCount] = m.Scale
+		This.FontNames[This.AlternativeCount] = m.AlternativeFontName
+
+	ENDFUNC
+
+	FUNCTION FindAlternative (DPIScale AS Integer)
+
+		LOCAL AltIndex AS Integer
+		LOCAL BestAlternative AS Integer
+		LOCAL Difference AS Integer
+		LOCAL BestDifference AS Integer
+
+		m.BestAlternative = 1
+		m.BestDifference = -1
+
+		FOR m.AltIndex = 1 TO This.AlternativeCount
+			m.Difference = m.DPIScale - This.Scales[m.AltIndex]
+			IF m.Difference == 0
+				m.BestAlternative = m.AltIndex
+				EXIT
+			ENDIF
+			IF m.Difference > 0
+				IF m.BestDifference == -1 OR m.Difference < m.BestDifference
+					m.BestDifference = m.Difference
+					m.BestAlternative = m.AltIndex
+				ENDIF
+			ENDIF
+		ENDFOR
+
+		This.AlternativeFontName = This.FontNames[m.BestAlternative]
+
+		RETURN This.AlternativeFontName
+
+	ENDFUNC
+
+ENDDEFINE
+			
 
 * DPIAwareScreenManager
 * An extension manager for the _Screen object.
