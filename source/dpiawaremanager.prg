@@ -18,6 +18,7 @@ SET PROCEDURE TO (SYS(16)) ADDITIVE
 #DEFINE ICON_SMALL	0
 #DEFINE ICON_BIG		1
 
+#DEFINE DC_LOGPIXELSX	88
 
 Define Class DPIAwareManager As Custom
 
@@ -40,10 +41,10 @@ Define Class DPIAwareManager As Custom
 
 	FUNCTION Init
 
-		DECLARE LONG GetDC IN WIN32API ;
-			LONG hWnd
 		DECLARE LONG GetWindowDC IN WIN32API ;
 			LONG hWnd
+		DECLARE LONG ReleaseDC IN WIN32API ;
+			LONG hWnd, LONG hDC
 		DECLARE LONG GetDeviceCaps IN WIN32API  ;
 			LONG hDC, INTEGER CapIndex
 		DECLARE LONG MonitorFromWindow IN WIN32API ;
@@ -155,6 +156,7 @@ Define Class DPIAwareManager As Custom
 	* The scale is a percentage (100%, 125%, ...).
 	FUNCTION GetMonitorDPIScale (DPIAwareForm AS Form) AS Integer
 	LOCAL dpiX AS Integer, dpiY AS Integer
+	LOCAL hDC AS Integer
 
 		* use the best available function to get the information
 		TRY
@@ -165,7 +167,9 @@ Define Class DPIAwareManager As Custom
 				STORE 0 TO m.dpiX, m.dpiY
 				GetDpiForMonitor(m.DPIAwareForm.hMonitor, 0, @m.dpiX, @m.dpiY)
 			OTHERWISE
-				m.dpiX = GetDeviceCaps(GetWindowDC(m.DPIAwareForm.HWnd), 88)
+				m.hDC = GetWindowDC(m.DPIAwareForm.HWnd)
+				m.dpiX = GetDeviceCaps(m.hDC, DC_LOGPIXELSX)
+				ReleaseDC(m.DPIAwareForm.HWnd, m.hDC)
 			ENDCASE
 		CATCH
 			m.dpiX = DPI_STANDARD
