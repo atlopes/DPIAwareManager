@@ -90,14 +90,20 @@ Define Class DPIAwareManager As Custom
 
 	ENDFUNC
 
+****************************************************************************************
+#DEFINE	METHODS_MANAGEMENT
+****************************************************************************************
+
 	* Manage
 	* Puts a form under DPI-awareness management
 	* It should be called before the form is shown
 	FUNCTION Manage (AForm AS Form, Constraints AS Integer) AS Void
 
 		* add DPI-aware related properties
-		This.AddDPIProperty(m.AForm, "hMonitor", MonitorFromWindow(m.AForm.HWnd, 0))
 		This.AddDPIProperty(m.AForm, "DPIAwareManager", This)
+		This.AddDPIProperty(m.AForm, "hMonitor", MonitorFromWindow(m.AForm.HWnd, 0))
+		This.AddDPIProperty(m.AForm, "DPIMonitorInfo", This.GetMonitorInfo(m.AForm.hMonitor, .F.))
+		This.AddDPIProperty(m.AForm, "DPIMonitorClientAreaInfo", This.GetMonitorInfo(m.AForm.hMonitor, .T.))
 		This.AddDPIProperty(m.AForm, "DPIScale", This.GetMonitorDPIScale(m.AForm))
 		This.AddDPIProperty(m.AForm, "DPINewScale", m.AForm.DPIScale)
 		This.AddDPIProperty(m.AForm, "DPIAutoConstraint", ;
@@ -110,10 +116,12 @@ Define Class DPIAwareManager As Custom
 		This.SaveContainer(m.AForm)
 
 		* bind the form to the two listeners for changes of the DPI scale
-		IF m.AForm = _Screen
+		IF m.AForm == _Screen
 			BINDEVENT(_Screen, "Moved", This, "CheckDPIScaleChange")
 		ENDIF
 		BINDEVENT(m.AForm.hWnd, WM_DPICHANGED, This, "WMCheckDPIScaleChange")
+		* and to clean-up methods
+		BINDEVENT(m.AForm, "Destroy", This, "CleanUp") 
 
 		* if the form was created in a non 100% scale monitor, perform an initial scaling without preadjustment
 		IF m.AForm.DPINewScale != DPI_STANDARD_SCALE
@@ -144,6 +152,27 @@ Define Class DPIAwareManager As Custom
 
 		* add the alternative font name for a given scale (and up)
 		m.AlternativeFont.AddAlternative(m.Scale, m.AdjustedFontName)
+
+	ENDFUNC
+
+	* CleanUp
+	* Clean up a managed form
+	FUNCTION CleanUp ()
+
+		LOCAL ARRAY SourceEvent(1)
+		AEVENTS(m.SourceEvent, 0)
+
+		LOCAL DPIAwareForm AS Form
+		m.DPIAwareForm = m.SourceEvent(1)
+
+		TRY
+			m.DPIAwareForm.DPIMonitorInfo = .NULL.
+		CATCH
+		ENDTRY
+		TRY
+			m.DPIAwareForm.DPIMonitorClientAreaInfo = .NULL.
+		CATCH
+		ENDTRY
 
 	ENDFUNC
 
@@ -210,6 +239,18 @@ Define Class DPIAwareManager As Custom
 
 	ENDFUNC
 
+	* SetMonitorInfo
+	* Sets positional, dimensional, and DPI inforation of current monitor
+	FUNCTION SetMonitorInfo (DPIAwareForm AS Form) 
+
+		m.DPIAwareForm.hMonitor = MonitorFromWindow(m.DPIAwareForm.hWnd, 0)
+		m.DPIAwareForm.DPIMonitorInfo = .NULL.
+		m.DPIAwareForm.DPIMonitorInfo = This.GetMonitorInfo(m.DPIAwareForm.hMonitor, .F.)
+		m.DPIAwareForm.DPIMonitorClientAreaInfo = .NULL.
+		m.DPIAwareForm.DPIMonitorClientAreaInfo = This.GetMonitorInfo(m.DPIAwareForm.hMonitor, .T.)
+
+	ENDFUNC
+
 	* GetFormDPIScale
 	* Returns the DPI Scale of the form that contains an object.
 	FUNCTION GetFormDPIScale (DPIAwareObject AS Object) AS Integer
@@ -221,7 +262,6 @@ Define Class DPIAwareManager As Custom
 		RETURN IIF(!ISNULL(m.ObjectForm), m.ObjectForm.DPIScale, DPI_STANDARD_SCALE)
 			
 	ENDFUNC
-
 
 ****************************************************************************************
 #DEFINE METHODS_AKNOWLEDGE_AND_REACT_TO_DPI_CHANGES
@@ -250,6 +290,9 @@ Define Class DPIAwareManager As Custom
 
 		m.DPIAwareForm.DPIManagerEvent = "WindowsMessage"
 
+		* refresh information on the monitor where the form is being displayed
+		This.SetMonitorInfo(m.DPIAwareForm)
+
 		* proceed to the actual method that performs the rescaling (the new DPI scale is passed as a percentage)
 		RETURN This.ChangeFormDPIScale(m.DPIAwareForm, BITAND(m.wParam, 0x07FFF) / DPI_STANDARD * DPI_STANDARD_SCALE)
 
@@ -265,6 +308,9 @@ Define Class DPIAwareManager As Custom
 		LOCAL DPIAwareForm AS Form
 		m.DPIAwareForm = m.SourceEvent(1)
 
+		* refresh information on the monitor where the form is being displayed
+		This.SetMonitorInfo(m.DPIAwareForm)
+
 		IF This.ChangeFormDPIScale(m.DPIAwareForm, This.GetMonitorDPIScale(m.DPIAwareForm)) = 0
 
 			m.DPIAwareForm.DPIManagerEvent = "Moved"
@@ -273,6 +319,8 @@ Define Class DPIAwareManager As Custom
 
 				FOR EACH m.DPIAwareForm AS Form IN _Screen.Forms
 					IF m.DPIAwareForm.ShowWindow = 0 AND PEMSTATUS(m.DPIAwareForm, "DPIAware", 5) AND m.DPIAwareForm.DPIAware
+						* refresh information on the monitor where the form is being displayed
+						This.SetMonitorInfo(m.DPIAwareForm)
 						This.ChangeFormDPIScale(m.DPIAwareForm, _Screen.DPIScale)
 					ENDIF
 				ENDFOR
@@ -288,9 +336,6 @@ Define Class DPIAwareManager As Custom
 	FUNCTION ChangeFormDPIScale (DPIAwareForm AS Form, NewDPIScale AS Integer) AS Integer
 
 		LOCAL Ops AS Exception
-
-		* refresh information on the monitor where the form is being displayed
-		m.DPIAwareForm.hMonitor = MonitorFromWindow(m.DPIAwareForm.HWnd, 0)
 
 		* act only if the scale of the form has changed (the _Screen may have only moved)
 		IF m.NewDPIScale != m.DPIAwareForm.DPIScale
