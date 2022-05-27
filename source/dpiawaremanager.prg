@@ -241,9 +241,13 @@ Define Class DPIAwareManager As Custom
 
 	* SetMonitorInfo
 	* Sets positional, dimensional, and DPI inforation of current monitor
-	FUNCTION SetMonitorInfo (DPIAwareForm AS Form) 
+	FUNCTION SetMonitorInfo (DPIAwareForm AS Form, Source AS Form) 
 
-		m.DPIAwareForm.hMonitor = MonitorFromWindow(m.DPIAwareForm.hWnd, 0)
+		IF PCOUNT() == 1
+			m.DPIAwareForm.hMonitor = MonitorFromWindow(m.DPIAwareForm.hWnd, 0)
+		ELSE
+			m.DPIAwareForm.hMonitor = m.Source.hMonitor
+		ENDIF
 		m.DPIAwareForm.DPIMonitorInfo = .NULL.
 		m.DPIAwareForm.DPIMonitorInfo = This.GetMonitorInfo(m.DPIAwareForm.hMonitor, .F.)
 		m.DPIAwareForm.DPIMonitorClientAreaInfo = .NULL.
@@ -320,7 +324,7 @@ Define Class DPIAwareManager As Custom
 				FOR EACH m.DPIAwareForm AS Form IN _Screen.Forms
 					IF m.DPIAwareForm.ShowWindow = 0 AND PEMSTATUS(m.DPIAwareForm, "DPIAware", 5) AND m.DPIAwareForm.DPIAware
 						* refresh information on the monitor where the form is being displayed
-						This.SetMonitorInfo(m.DPIAwareForm)
+						This.SetMonitorInfo(m.DPIAwareForm, _Screen)
 						This.ChangeFormDPIScale(m.DPIAwareForm, _Screen.DPIScale)
 					ENDIF
 				ENDFOR
