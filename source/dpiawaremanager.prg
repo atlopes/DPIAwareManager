@@ -322,7 +322,7 @@ Define Class DPIAwareManager As Custom
 			IF m.DPIAwareForm = _Screen
 
 				FOR EACH m.DPIAwareForm AS Form IN _Screen.Forms
-					IF m.DPIAwareForm.BaseClass == "Form" AND .DPIAwareForm.ShowWindow = 0 AND PEMSTATUS(m.DPIAwareForm, "DPIAware", 5) AND m.DPIAwareForm.DPIAware
+					IF m.DPIAwareForm.BaseClass == "Form" AND m.DPIAwareForm.ShowWindow = 0 AND PEMSTATUS(m.DPIAwareForm, "DPIAware", 5) AND m.DPIAwareForm.DPIAware
 						* refresh information on the monitor where the form is being displayed
 						This.SetMonitorInfo(m.DPIAwareForm, _Screen)
 						This.ChangeFormDPIScale(m.DPIAwareForm, _Screen.DPIScale)
