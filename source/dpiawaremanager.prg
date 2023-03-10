@@ -111,6 +111,7 @@ Define Class DPIAwareManager As Custom
 				IIF(m.AForm == _Screen OR m.AForm.ShowWindow == 2, DPIAW_NO_REPOSITION, DPIAW_RELATIVE_TOP_LEFT), ;
 				m.Constraints))
 		This.AddDPIProperty(m.AForm, "DPIManagerEvent", "Manage")
+		This.AddDPIProperty(m.AForm, "DPIScaling", .F.)
 		
 		* save the original value of dimensional and positional properties of the form
 		This.SaveContainer(m.AForm)
@@ -520,6 +521,38 @@ Define Class DPIAwareManager As Custom
 		This.SaveGraphicAlternatives(m.Ctrl, "DisabledPicture")
 		This.SaveGraphicAlternatives(m.Ctrl, "DownPicture")
 
+		LOCAL CtrlsForm AS Form
+
+		* if DPI awareness is controlled by the control itself or by its parents, give it the opportunity to save additional information
+		IF PEMSTATUS(m.Ctrl, "DPIAwareSelfControl", 5)
+
+			TRY
+				DO CASE
+
+				* the control manages itself
+				CASE m.Ctrl.DPIAwareSelfControl == 1
+
+					m.Ctrl.DPIAwareSaveOriginalInfo()
+
+				* the form manages the control
+				CASE m.Ctrl.DPIAwareSelfControl == 2
+
+					m.CtrlsForm = This.GetThisform(m.Ctrl)
+					IF !ISNULL(m.CtrlsForm)
+						m.CtrlsForm.DPIAwareSaveOriginalInfo(m.Ctrl)
+					ENDIF
+
+				* the _Screen manages the control
+				CASE m.Ctrl.DPIAwareSelfControl == 3
+
+					_Screen.DPIAwareScrenManager.DPIAwareSaveOriginalInfo(m.Ctrl)
+
+				ENDCASE
+			CATCH				&& ignore any errors, the method may not be implemented
+			ENDTRY
+
+		ENDIF
+
 	ENDFUNC
 
 	* SaveGraphicAlternatives
@@ -598,6 +631,7 @@ Define Class DPIAwareManager As Custom
 
 		m.IsForm = m.Ctnr.BaseClass == 'Form'
 		IF m.IsForm
+			m.Ctnr.DPIScaling = .T.
 			This.SetAnchor(m.Ctnr, .T.)
 		ENDIF
 
@@ -621,6 +655,7 @@ Define Class DPIAwareManager As Custom
 		IF !m.Scalable
 			IF m.IsForm
 				This.SetAnchor(m.Ctnr, .F.)
+				m.Ctnr.DPIScaling = .F.
 			ENDIF
 			RETURN
 		ENDIF
@@ -644,6 +679,7 @@ Define Class DPIAwareManager As Custom
 		IF m.IsForm
 
 			This.SetAnchor(m.Ctnr, .F.)
+			m.Ctnr.DPIScaling = .F.
 			m.Ctnr.LockScreen = .F.
 
 		ENDIF
@@ -691,7 +727,7 @@ Define Class DPIAwareManager As Custom
 
 		CASE m.Ctrl.BaseClass == 'Pageframe'
 
-			* the pageframe is already scaled, but scaling pages may still affect the pagframe size
+			* the pageframe is already scaled, but scaling pages may still affect the pageframe size
 			LOCAL TabSize AS Number, NewTabSize AS Number
 			m.TabSize = 0
 			WITH m.Ctrl AS PageFrame
@@ -748,7 +784,7 @@ Define Class DPIAwareManager As Custom
 			ENDWITH
 
 			FOR EACH m.SubCtrl AS Column IN m.Ctrl.Columns
-				* the column will have extra plus or minus space, since some components of the grid width do not grow
+				* the column will have extra plus or minus space, since some components of the grid width do not scale
 				This.AdjustSize(m.SubCtrl, m.DPIScale, m.DPINewScale, m.FixedWeight)
 				This.Scale(m.SubCtrl, m.DPIScale, m.DPINewScale)
 			ENDFOR
@@ -969,7 +1005,7 @@ Define Class DPIAwareManager As Custom
 	ENDFUNC
 
 	* AdjustPropertyValue
-	* Adjusts the value of a property to a new value.
+	* Adjusts the current value of a property to a new value.
 	FUNCTION AdjustPropertyValue (Ctrl AS Object, Property AS String, Ratio AS Number, NewRatio AS Number, Excluded AS Number, ExtraRatio AS Number) AS Logical
 
 		LOCAL CtrlProperty AS String
@@ -1386,6 +1422,10 @@ DEFINE CLASS DPIAwareScreenManager AS Custom
 
 	FUNCTION SelfManage (DPIScale AS Integer, DPINewScale AS Integer)
 		RETURN .F.
+	ENDFUNC
+
+	FUNCTION DPIAwareSaveOriginalInfo (Ctrl AS Object)
+		RETURN .T.
 	ENDFUNC
 
 ENDDEFINE
