@@ -41,30 +41,30 @@ Define Class DPIAwareManager As Custom
 
 	FUNCTION Init
 
-		DECLARE LONG GetWindowDC IN WIN32API ;
+		DECLARE LONG GetWindowDC IN WIN32API AS dpiaw_GetWindowDC ;
 			LONG hWnd
-		DECLARE LONG ReleaseDC IN WIN32API ;
+		DECLARE LONG ReleaseDC IN WIN32API AS dpiaw_ReleaseDC ;
 			LONG hWnd, LONG hDC
-		DECLARE LONG GetDeviceCaps IN WIN32API  ;
+		DECLARE LONG GetDeviceCaps IN WIN32API AS dpiaw_GetDeviceCaps ;
 			LONG hDC, INTEGER CapIndex
-		DECLARE LONG MonitorFromWindow IN WIN32API ;
+		DECLARE LONG MonitorFromWindow IN WIN32API AS dpiaw_MonitorFromWindow ;
 			LONG hWnd, INTEGER Flags
-		DECLARE INTEGER GetMonitorInfo IN WIN32API ;
+		DECLARE INTEGER GetMonitorInfo IN WIN32API AS dpiaw_GetMonitorInfo ;
 			LONG hMonitor, STRING @ MonitorInfo
-		DECLARE INTEGER ExtractIcon IN shell32 ;
+		DECLARE INTEGER ExtractIcon IN shell32 AS dpiaw_ExtractIcon ;
 			INTEGER hInst, STRING FileName, INTEGER IndexIcon
-		DECLARE INTEGER SendMessage IN user32 ;
+		DECLARE INTEGER SendMessage IN user32 AS dpiaw_SendMessage ;
 			INTEGER hWnd, INTEGER Msg, INTEGER wParam, INTEGER lParam
 
 		TRY
-			DECLARE LONG GetDpiForMonitor IN SHCORE.DLL ;
+			DECLARE LONG GetDpiForMonitor IN SHCORE.DLL AS dpiaw_GetDpiForMonitor ;
 				LONG hMonitor, INTEGER dpiType, INTEGER @ dpiX, INTEGER @ dpiY
 			This.SystemInfoFunction = 1
 		CATCH
 		ENDTRY
 
 		TRY
-			DECLARE INTEGER GetDpiForWindow IN WIN32API ;
+			DECLARE INTEGER GetDpiForWindow IN WIN32API AS dpiaw_GetDpiForWindow ;
 				LONG hWnd
 			This.SystemInfoFunction = 2
 		CATCH
@@ -72,15 +72,15 @@ Define Class DPIAwareManager As Custom
 
 		* get the awareness type of the process
 		TRY
-			DECLARE INTEGER IsProcessDPIAware IN WIN32API
-			IF IsProcessDPIAware() != 0
+			DECLARE INTEGER IsProcessDPIAware IN WIN32API AS dpiaw_IsProcessDPIAware
+			IF dpiaw_IsProcessDPIAware() != 0
 				This.AwarenessType = 1
 			ENDIF
 			TRY
-				DECLARE INTEGER GetProcessDpiAwareness IN Shcore.dll LONG Process, LONG @ Awareness
+				DECLARE INTEGER GetProcessDpiAwareness IN Shcore.dll AS dpiaw_GetProcessDpiAwareness LONG Process, LONG @ Awareness
 				LOCAL Awareness AS Integer
 				m.Awareness = 0
-				IF GetProcessDpiAwareness(0, @m.Awareness) == 0
+				IF dpiaw_GetProcessDpiAwareness(0, @m.Awareness) == 0
 					This.AwarenessType = m.Awareness
 				ENDIF
 			CATCH
@@ -101,7 +101,7 @@ Define Class DPIAwareManager As Custom
 
 		* add DPI-aware related properties
 		This.AddDPIProperty(m.AForm, "DPIAwareManager", This)
-		This.AddDPIProperty(m.AForm, "hMonitor", MonitorFromWindow(m.AForm.HWnd, 0))
+		This.AddDPIProperty(m.AForm, "hMonitor", dpiaw_MonitorFromWindow(m.AForm.HWnd, 0))
 		This.AddDPIProperty(m.AForm, "DPIMonitorInfo", This.GetMonitorInfo(m.AForm.hMonitor, .F.))
 		This.AddDPIProperty(m.AForm, "DPIMonitorClientAreaInfo", This.GetMonitorInfo(m.AForm.hMonitor, .T.))
 		This.AddDPIProperty(m.AForm, "DPIScale", This.GetMonitorDPIScale(m.AForm))
@@ -192,14 +192,14 @@ Define Class DPIAwareManager As Custom
 		TRY
 			DO CASE
 			CASE This.SystemInfoFunction = 2
-				m.dpiX = GetDpiForWindow(m.DPIAwareForm.HWnd)
+				m.dpiX = dpiaw_GetDpiForWindow(m.DPIAwareForm.HWnd)
 			CASE This.SystemInfoFunction = 1		&& not for Per-Monitor aware (AwarenessType = 2)
 				STORE 0 TO m.dpiX, m.dpiY
-				GetDpiForMonitor(m.DPIAwareForm.hMonitor, 0, @m.dpiX, @m.dpiY)
+				dpiaw_GetDpiForMonitor(m.DPIAwareForm.hMonitor, 0, @m.dpiX, @m.dpiY)
 			OTHERWISE
-				m.hDC = GetWindowDC(m.DPIAwareForm.HWnd)
-				m.dpiX = GetDeviceCaps(m.hDC, DC_LOGPIXELSX)
-				ReleaseDC(m.DPIAwareForm.HWnd, m.hDC)
+				m.hDC = dpiaw_GetWindowDC(m.DPIAwareForm.HWnd)
+				m.dpiX = dpiaw_GetDeviceCaps(m.hDC, DC_LOGPIXELSX)
+				dpiaw_ReleaseDC(m.DPIAwareForm.HWnd, m.hDC)
 			ENDCASE
 		CATCH
 			m.dpiX = DPI_STANDARD
@@ -220,7 +220,7 @@ Define Class DPIAwareManager As Custom
 
 		m.MonitorInfoStructure = SIZEOF_MONITORINFO + REPLICATE(CHR(0), 36)
 
-		GetMonitorInfo(m.hMonitor, @m.MonitorInfoStructure)
+		dpiaw_GetMonitorInfo(m.hMonitor, @m.MonitorInfoStructure)
 
 		IF !m.IsWorkArea
 			m.Rect = SUBSTR(m.MonitorInfoStructure, 5, 16)
@@ -245,7 +245,7 @@ Define Class DPIAwareManager As Custom
 	FUNCTION SetMonitorInfo (DPIAwareForm AS Form, Source AS Form) 
 
 		IF PCOUNT() == 1
-			m.DPIAwareForm.hMonitor = MonitorFromWindow(m.DPIAwareForm.hWnd, 0)
+			m.DPIAwareForm.hMonitor = dpiaw_MonitorFromWindow(m.DPIAwareForm.hWnd, 0)
 		ELSE
 			m.DPIAwareForm.hMonitor = m.Source.hMonitor
 		ENDIF
@@ -518,6 +518,7 @@ Define Class DPIAwareManager As Custom
 		This.SaveGraphicAlternatives(m.Ctrl, "Picture")
 		This.SaveGraphicAlternatives(m.Ctrl, "PictureVal")
 		This.SaveGraphicAlternatives(m.Ctrl, "Icon")
+		This.SaveGraphicAlternatives(m.Ctrl, "MouseIcon")
 		This.SaveGraphicAlternatives(m.Ctrl, "DisabledPicture")
 		This.SaveGraphicAlternatives(m.Ctrl, "DownPicture")
 
@@ -548,7 +549,7 @@ Define Class DPIAwareManager As Custom
 					_Screen.DPIAwareScrenManager.DPIAwareSaveOriginalInfo(m.Ctrl)
 
 				ENDCASE
-			CATCH				&& ignore any errors, the method may not be implemented
+			CATCH				&& ignore any errors, the method may not have been implemented
 			ENDTRY
 
 		ENDIF
@@ -613,7 +614,7 @@ Define Class DPIAwareManager As Custom
 
 	* Scale
 	* Scale a container from one scale to another.
-	FUNCTION Scale (Ctnr AS Object, DPIScale AS Number, DPINewScale AS Number, DontPreAdjust AS Logical)
+	FUNCTION Scale (Ctnr AS Object, DPIScale AS Number, DPINewScale AS Number, SkipPreAdjust AS Logical)
 
 		LOCAL IsForm AS Logical
 		LOCAL SubCtrl AS Object
@@ -635,10 +636,10 @@ Define Class DPIAwareManager As Custom
 			This.SetAnchor(m.Ctnr, .T.)
 		ENDIF
 
-		* forms require a pre-adjustement because the way Windows/VFP(?) pass from one scale to another,
+		* forms require a pre-adjustement because of the way Windows/VFP(?) pass from one scale to another,
 		*   removing a few fixed pixels from the form dimensions (width and height) - this is done automatically as soon
 		*   as the DPI scales changes and before the DPIAwareManager has a chance to step in
-		IF m.IsForm AND !m.DontPreAdjust
+		IF m.IsForm AND ! m.SkipPreAdjust
 			This.PreAdjustFormDimensions(m.Ctnr, m.DPIScale, m.DPINewScale)
 		ENDIF
 
@@ -897,26 +898,31 @@ Define Class DPIAwareManager As Custom
 	*   pixels when moving from one scale to the other.
 	FUNCTION PreAdjustFormDimensions (Ctrl AS Form, DPIScale AS Number, NewDPIScale AS Number)
 
-		LOCAL Scale AS Integer
-		LOCAL WidthAdjustment AS Integer
-		LOCAL HeightAdjustment AS Integer
+		* but only for top-level forms
+		IF (m.Ctrl.ShowWindow == 2 OR m.Ctrl == _Screen)
+		
+			LOCAL Scale AS Integer
+			LOCAL WidthAdjustment AS Integer
+			LOCAL HeightAdjustment AS Integer
 
-		* scale level: 0 = 100, 1 = 125, 2 = 150, etc.
-		m.Scale = This.GetDPILevel(m.NewDPIScale)
-		m.WidthAdjustment = VAL(GETWORDNUM(This.WidthAdjustments, m.Scale, ","))
-		m.HeightAdjustment = VAL(GETWORDNUM(This.HeightAdjustments, m.Scale, ","))
+			* scale level: 0 = 100, 1 = 125, 2 = 150, etc.
+			m.Scale = This.GetDPILevel(m.NewDPIScale)
+			m.WidthAdjustment = VAL(GETWORDNUM(This.WidthAdjustments, m.Scale, ","))
+			m.HeightAdjustment = VAL(GETWORDNUM(This.HeightAdjustments, m.Scale, ","))
 
-		* add the adjustments to the cutted dimensions, to compensate for the cutting 
-		m.Ctrl.Width = m.Ctrl.Width + m.WidthAdjustment
-		m.Ctrl.Height = m.Ctrl.Height + m.HeightAdjustment
+			* add the adjustments to the cutted dimensions, to compensate for the cutting 
+			m.Ctrl.Width = m.Ctrl.Width + m.WidthAdjustment
+			m.Ctrl.Height = m.Ctrl.Height + m.HeightAdjustment
 
-		m.Scale = This.GetDPILevel(m.DPIScale)
-		m.WidthAdjustment = VAL(GETWORDNUM(This.WidthAdjustments, m.Scale, ","))
-		m.HeightAdjustment = VAL(GETWORDNUM(This.HeightAdjustments, m.Scale, ","))
+			m.Scale = This.GetDPILevel(m.DPIScale)
+			m.WidthAdjustment = VAL(GETWORDNUM(This.WidthAdjustments, m.Scale, ","))
+			m.HeightAdjustment = VAL(GETWORDNUM(This.HeightAdjustments, m.Scale, ","))
 
-		* but remove the adjustments made previously
-		m.Ctrl.Width = m.Ctrl.Width - m.WidthAdjustment
-		m.Ctrl.Height = m.Ctrl.Height - m.HeightAdjustment
+			* but remove the adjustments made previously
+			m.Ctrl.Width = m.Ctrl.Width - m.WidthAdjustment
+			m.Ctrl.Height = m.Ctrl.Height - m.HeightAdjustment
+
+		ENDIF
 
 	ENDFUNC
 
@@ -1161,6 +1167,7 @@ Define Class DPIAwareManager As Custom
 		This.FindGraphicAlternative(m.Ctrl, "Picture", m.NewDPIScale)
 		This.FindGraphicAlternative(m.Ctrl, "PictureVal", m.NewDPIScale)
 		This.FindGraphicAlternative(m.Ctrl, "Icon", m.NewDPIScale)
+		This.FindGraphicAlternative(m.Ctrl, "MouseIcon", m.NewDPIScale)
 		This.FindGraphicAlternative(m.Ctrl, "DisabledPicture", m.NewDPIScale)
 		This.FindGraphicAlternative(m.Ctrl, "DownPicture", m.NewDPIScale)
 
@@ -1243,11 +1250,11 @@ Define Class DPIAwareManager As Custom
 
 		IF !EMPTY(m.IconFile)
 			* success in creating the file? get the icon from the temporary file and reset it
-			m.hIcon = ExtractIcon(0, m.IconFile, 0)
-			SendMessage(m.Ctrl.hWnd, WM_SETICON, ICON_SMALL, m.hIcon)
+			m.hIcon = dpiaw_ExtractIcon(0, m.IconFile, 0)
+			dpiaw_SendMessage(m.Ctrl.hWnd, WM_SETICON, ICON_SMALL, m.hIcon)
 			* use it also for the "big" version of top level forms
 			IF m.Ctrl == _Screen OR m.Ctrl.ShowWindow == 2
-				SendMessage(m.Ctrl.hWnd, WM_SETICON, ICON_BIG, m.hIcon)
+				dpiaw_SendMessage(m.Ctrl.hWnd, WM_SETICON, ICON_BIG, m.hIcon)
 			ENDIF
 			* clean up
 			TRY
@@ -1426,27 +1433,6 @@ DEFINE CLASS DPIAwareScreenManager AS Custom
 
 	FUNCTION DPIAwareSaveOriginalInfo (Ctrl AS Object)
 		RETURN .T.
-	ENDFUNC
-
-ENDDEFINE
-
-* a template for DPI-aware classes
-DEFINE CLASS DPIAware_Optiongroup AS OptionGroup
-
-	DPIAware = .NULL.
-
-	FUNCTION Visible_Assign (Visibility AS Logical)
-
-		This.Visible = m.Visibility
-		IF m.Visibility AND ISNULL(This.DPIAware)
-			IF TYPE("Thisform") == "O" AND PEMSTATUS(Thisform, "DPIAware", 5) AND Thisform.DPIAware
-				This.DPIAware = .T.
-				Thisform.DPIAwareManager.AddControl(This)
-			ELSE
-				This.DPIAware = .F.
-			ENDIF
-		ENDIF
-
 	ENDFUNC
 
 ENDDEFINE
