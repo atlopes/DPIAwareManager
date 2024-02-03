@@ -17,10 +17,20 @@ m.DPI = CREATEOBJECT("DPIAwareManager")
 * the VFP screen will be managed
 m.DPI.Manage(_Screen)
 * and we'll want to see a log
-m.DPI.Log()
+m.DPI.Logging = .T.
+
+CREATE CURSOR DPIAwareManagerLog ;
+	(PK Int AutoInc, ;
+		ControlName Varchar(60), ClassName Varchar(60), Property Varchar(32), ;
+		Original Varchar(254), ;
+		Ratio Double, NewRatio Double, ;
+		FixedProperty Logical, ;
+		ScaledBefore Varchar(254), Calculated Varchar(254), Stored Varchar(254))
 
 * create a screen extension manager to demonstrate a DPI-aware menu
 _Screen.AddObject("DPIAwareScreenManager", "ScreenManager")
+* and use it to hook into the manager logging
+BINDEVENT(m.DPI, "Log", _Screen.DPIAwareScreenManager, "LogChange")
 
 * a new menu pad to extend the system menu
 DEFINE PAD padDPIAware OF _MSYSMENU PROMPT "DPIAware"
@@ -140,6 +150,21 @@ DEFINE CLASS ScreenManager AS DPIAwareScreenManager OF ../source/dpiawaremanager
 
 	ENDFUNC
 
+	FUNCTION LogChange (ControlName AS String, ClassName AS String, Property AS String, ;
+				Original AS String, Ratio AS Double, NewRatio AS Double, ;
+				FixedProperty AS Logical, ;
+				ScaledBefore AS String, Calculated AS String, Stored AS String)
+
+		INSERT INTO DPIAwareManagerLog (ControlName, ClassName, Property, ;
+					Original, Ratio, NewRatio, ;
+					FixedProperty, ;
+					ScaledBefore, Calculated, Stored) ;
+				VALUES (m.ControlName, m.ClassName, m.Property, ;
+					m.Original, m.Ratio, m.NewRatio, ;
+					m.FixedProperty, ;
+					m.ScaledBefore, m.Calculated, m.Stored)
+
+	ENDFUNC
 
 ENDDEFINE
 

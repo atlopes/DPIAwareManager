@@ -25,6 +25,9 @@ Define Class DPIAwareManager As Custom
 	* process DPI awareness type
 	AwarenessType = 0
 
+	* logging
+	Logging = .F.
+
 	* compensation for what is cut from a form when changing DPI (from 125 to 300%)
 	* to be confirmed...
 	WidthAdjustments = "2,6,8,10,12,14,16,18"
@@ -501,26 +504,30 @@ Define Class DPIAwareManager As Custom
 			This.AddDPIProperty(m.Ctrl, "DPIAware", .T.)
 		ENDIF
 		This.SaveOriginalProperty(m.Ctrl, "Anchor")
-		This.SaveOriginalProperty(m.Ctrl, "Width")
-		This.SaveOriginalProperty(m.Ctrl, "MinWidth")
-		This.SaveOriginalProperty(m.Ctrl, "MaxWidth")
-		This.SaveOriginalProperty(m.Ctrl, "Height")
-		This.SaveOriginalProperty(m.Ctrl, "MinHeight")
-		This.SaveOriginalProperty(m.Ctrl, "MaxHeight")
-		This.SaveOriginalProperty(m.Ctrl, "Left")
-		This.SaveOriginalProperty(m.Ctrl, "Top")
+		This.SaveOriginalProperty(m.Ctrl, "BorderWidth")
+		This.SaveOriginalProperty(m.Ctrl, "ColumnWidths")
+		This.SaveOriginalProperty(m.Ctrl, "DrawWidth")
 		This.SaveOriginalProperty(m.Ctrl, "FontName")
 		This.SaveOriginalProperty(m.Ctrl, "FontSize")
-		This.SaveOriginalProperty(m.Ctrl, "Margin")
-		This.SaveOriginalProperty(m.Ctrl, "RowHeight")
+		This.SaveOriginalProperty(m.Ctrl, "GridLineWidth")
 		This.SaveOriginalProperty(m.Ctrl, "HeaderHeight")
+		This.SaveOriginalProperty(m.Ctrl, "Height")
+		This.SaveOriginalProperty(m.Ctrl, "Left")
+		This.SaveOriginalProperty(m.Ctrl, "Margin")
+		This.SaveOriginalProperty(m.Ctrl, "MaxHeight")
+		This.SaveOriginalProperty(m.Ctrl, "MaxWidth")
+		This.SaveOriginalProperty(m.Ctrl, "MinHeight")
+		This.SaveOriginalProperty(m.Ctrl, "MinWidth")
+		This.SaveOriginalProperty(m.Ctrl, "RowHeight")
+		This.SaveOriginalProperty(m.Ctrl, "Top")
+		This.SaveOriginalProperty(m.Ctrl, "Width")
 
-		This.SaveGraphicAlternatives(m.Ctrl, "Picture")
-		This.SaveGraphicAlternatives(m.Ctrl, "PictureVal")
-		This.SaveGraphicAlternatives(m.Ctrl, "Icon")
-		This.SaveGraphicAlternatives(m.Ctrl, "MouseIcon")
 		This.SaveGraphicAlternatives(m.Ctrl, "DisabledPicture")
 		This.SaveGraphicAlternatives(m.Ctrl, "DownPicture")
+		This.SaveGraphicAlternatives(m.Ctrl, "Icon")
+		This.SaveGraphicAlternatives(m.Ctrl, "MouseIcon")
+		This.SaveGraphicAlternatives(m.Ctrl, "Picture")
+		This.SaveGraphicAlternatives(m.Ctrl, "PictureVal")
 
 		LOCAL CtrlsForm AS Form
 
@@ -661,7 +668,7 @@ Define Class DPIAwareManager As Custom
 			RETURN
 		ENDIF
 
-		* all anchors in a form are set to zero, so that the scale won't trigger resize and reposition of contained controls
+		* all anchors in a form are set to zero, so that the scale won't trigger the resizing and repositioning of contained controls
 		IF m.IsForm
 
 			m.Ctnr.LockScreen = .T.
@@ -949,14 +956,11 @@ Define Class DPIAwareManager As Custom
 
 		m.IsForm = m.Ctrl.BaseClass == "Form"
 
-		* row height and header height before font size, unless they're marked as Auto
-		This.AdjustPropertyValue(m.Ctrl, "RowHeight", m.XYRatio, m.NewXYRatio, -1)
-		This.AdjustPropertyValue(m.Ctrl, "HeaderHeight", m.XYRatio, m.NewXYRatio, -1)
-
-		IF !m.Ctrl.BaseClass == "Grid"
-			* if we are not growing, calculate the margin first to arrange more space for the text
+		IF ! m.Ctrl.BaseClass == "Grid"
+			* if we are not growing, calculate the margin and border first to arrange more space for the text
 			IF !m.IsGrowing
 				This.AdjustFixedPropertyValue(m.Ctrl, "Margin", m.XYRatio, m.NewXYRatio, .NULL., .T.)
+				This.AdjustFixedPropertyValue(m.Ctrl, "BorderWidth", m.XYRatio, m.NewXYRatio, .NULL., .T.)
 			ENDIF
 			* adjust the font name before adjusting its size
 			This.AdjustFontNameAlternative(m.Ctrl)
@@ -964,8 +968,16 @@ Define Class DPIAwareManager As Custom
 			This.AdjustFixedPropertyValue(m.Ctrl, "FontSize", m.XYRatio, m.NewXYRatio)
 			* if it is growing, margins are arranged afterward
 			IF m.IsGrowing
+				This.AdjustFixedPropertyValue(m.Ctrl, "BorderWidth", m.XYRatio, m.NewXYRatio, .NULL., .T.)
 				This.AdjustFixedPropertyValue(m.Ctrl, "Margin", m.XYRatio, m.NewXYRatio, .NULL., .T.)
 			ENDIF
+		ELSE
+			* grids:
+			* row height and header height, unless they're marked as Auto
+			This.AdjustPropertyValue(m.Ctrl, "RowHeight", m.XYRatio, m.NewXYRatio, -1)
+			This.AdjustPropertyValue(m.Ctrl, "HeaderHeight", m.XYRatio, m.NewXYRatio, -1)
+			* other properties
+			This.AdjustFixedPropertyValue(m.Ctrl, "GridLineWidth", m.XYRatio, m.NewXYRatio)
 		ENDIF
 
 		* if we are growing, make sure we grow maximum dimensions before growing
@@ -995,10 +1007,14 @@ Define Class DPIAwareManager As Custom
 		ENDIF
 
 		* for all controls except forms, deal with their position
-		IF !m.IsForm
+		IF ! m.IsForm
 			This.AdjustPropertyValue(m.Ctrl, "Top", m.XYRatio, m.NewXYRatio)
 			This.AdjustPropertyValue(m.Ctrl, "Left", m.XYRatio, m.NewXYRatio)
 		ENDIF
+
+		* process other positional or dimensional properties
+		This.AdjustFixedPropertyValue(m.Ctrl, "DrawWidth", m.XYRatio, m.NewXYRatio, .NULL., .T.)
+		This.AdjustFixedPropertyValue(m.Ctrl, "ColumnWidths", m.XYRatio, m.NewXYRatio)
 
 		* take care of the alternate graphics the control may have defined for the new scale
 		This.AdjustGraphicAlternatives(m.Ctrl, m.NewDPIScale)
@@ -1043,18 +1059,13 @@ Define Class DPIAwareManager As Custom
 					* store the final (rounded) value
 					STORE ROUND(m.NewCurrentValue, 0) TO (m.CtrlProperty)
 
-					* log the adjustment
-					TRY
-						IF USED("DPIAwareManagerLog")
-							INSERT INTO DPIAwareManagerLog (ControlName, ClassName, Property, Original, Ratio, NewRatio, ;
-									FixedProperty, ScaledBefore, Calculated, Stored) ;
-								VALUES (m.Ctrl.Name, m.Ctrl.Class, m.Property, m.OriginalValue, m.Ratio, m.NewAdjustedRatio, ;
-									.F., m.CurrentValue, m.NewCurrentValue, EVALUATE(m.CtrlProperty))
-						ENDIF
-					CATCH
-					ENDTRY
-
 					m.Adjusted = .T.
+
+					* log the adjustment
+					IF This.Logging
+						This.Log(m.Ctrl.Name, m.Ctrl.Class, m.Property, TRANSFORM(m.OriginalValue), m.Ratio, m.NewAdjustedRatio, .F., ;
+							TRANSFORM(m.CurrentValue), TRANSFORM(m.NewCurrentValue), TRANSFORM(EVALUATE(m.CtrlProperty)))
+					ENDIF
 
 				ENDIF
 			CATCH
@@ -1071,41 +1082,71 @@ Define Class DPIAwareManager As Custom
 
 		LOCAL CtrlProperty AS String
 		LOCAL Adjusted AS Logical
-		LOCAL OriginalValue AS Number
-		LOCAL NewCurrentValue AS Number
+		LOCAL OriginalValue AS NumberOrString
+		LOCAL NewCurrentValue AS NumberOrString
+		LOCAL ARRAY ValuesList[1]
+		LOCAL ValueIndex AS Integer
+		LOCAL MemberValue AS Number
 
 		m.Adjusted = .F.
 
 		IF PEMSTATUS(m.Ctrl, "DPIAware_" + m.Property, 5)
 			TRY
+
 				* fixed properties are scaled from the original value
 				* unless they are excluded for being automatic or unset
 				m.OriginalValue = EVALUATE("m.Ctrl.DPIAware_" + m.Property)
 				IF PCOUNT() < 5 OR ISNULL(m.Excluded) OR m.Excluded != m.OriginalValue
 
-					* calculate the new value
-					m.NewCurrentValue = m.OriginalValue * m.NewRatio
-
-					* store the final (rounded) value
+					* the destination of the new value
 					m.CtrlProperty = "m.Ctrl." + m.Property
-					IF !m.Low
-						STORE ROUND(m.NewCurrentValue, 0) TO (m.CtrlProperty)
+
+					* for most cases, properties are numeric
+					IF VARTYPE(m.OriginalValue) == "N"
+
+						* calculate the new value
+						m.NewCurrentValue = m.OriginalValue * m.NewRatio
+
+						* store the final (rounded or truncated) value
+						IF !m.Low
+							STORE ROUND(m.NewCurrentValue, 0) TO (m.CtrlProperty)
+						ELSE
+							STORE FLOOR(m.NewCurrentValue) TO (m.CtrlProperty)
+						ENDIF
+
+					* string properties consist in a comma-separated list of numbers
 					ELSE
-						STORE FLOOR(m.NewCurrentValue) TO (m.CtrlProperty)
+
+						* prepare to rebuild the list
+						m.NewCurrentValue = ""
+
+						* adjust every member of the list
+						FOR m.ValueIndex = 1 TO ALINES(m.ValuesList, m.OriginalValue, 0, ",")
+
+							m.MemberValue = VAL(m.ValuesList[m.ValueIndex]) * m.NewRatio
+
+							IF m.Low
+								m.NewCurrentValue = m.NewCurrentValue + LTRIM(STR(FLOOR(m.MemberValue))) + ","
+							ELSE
+								m.NewCurrentValue = m.NewCurrentValue + LTRIM(STR(ROUND(m.MemberValue, 0))) + ","
+							ENDIF
+
+						ENDFOR
+
+						* store the list with new values
+						m.NewCurrentValue = RTRIM(m.NewCurrentValue, 0, ",")
+						STORE m.NewCurrentValue TO (m.CtrlProperty)
+
 					ENDIF
 
-					* log the adjustment
-					TRY
-						IF USED("DPIAwareManagerLog")
-							INSERT INTO DPIAwareManagerLog (ControlName, ClassName, Property, Original, Ratio, NewRatio, ;
-									FixedProperty, ScaledBefore, Calculated, Stored) ;
-								VALUES (m.Ctrl.Name, m.Ctrl.Class, m.Property, m.OriginalValue, m.Ratio, m.NewRatio, ;
-									.T., m.OriginalValue, m.NewCurrentValue, EVALUATE(m.CtrlProperty))
-						ENDIF
-					CATCH
-					ENDTRY
-
 					m.Adjusted = .T.
+
+					* log the adjustment
+					IF This.Logging
+						This.Log(m.Ctrl.Name, m.Ctrl.Class, m.Property, TRANSFORM(m.OriginalValue), m.Ratio, m.NewAdjustedRatio, .F., ;
+							TRANSFORM(m.CurrentValue), TRANSFORM(m.NewCurrentValue), TRANSFORM(EVALUATE(m.CtrlProperty)))
+					ENDIF
+
 				ENDIF
 			CATCH
 			ENDTRY
@@ -1310,16 +1351,11 @@ Define Class DPIAwareManager As Custom
 	ENDFUNC
 
 	* Log
-	* Starts a logger
-	FUNCTION Log ()
-
-		CREATE CURSOR DPIAwareManagerLog ;
-			(PK Int AutoInc, ;
-				ControlName Varchar(60), ClassName Varchar(60), Property Varchar(32), ;
-				Original Double, ;
-				Ratio Double, NewRatio Double, ;
-				FixedProperty Logical, ;
-				ScaledBefore Double, Calculated Double, Stored Double)
+	* Logs a scale operation
+	FUNCTION Log (ControlName AS String, ClassName AS String, Property AS String, ;
+				Original AS String, Ratio AS Double, NewRatio AS Double, ;
+				FixedProperty AS Logical, ;
+				ScaledBefore AS String, Calculated AS String, Stored AS String)
 
 	ENDFUNC
 
