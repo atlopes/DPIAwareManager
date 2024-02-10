@@ -905,8 +905,8 @@ Define Class DPIAwareManager As Custom
 	*   pixels when moving from one scale to the other.
 	FUNCTION PreAdjustFormDimensions (Ctrl AS Form, DPIScale AS Number, NewDPIScale AS Number)
 
-		* but only for top-level forms
-		IF (m.Ctrl.ShowWindow == 2 OR m.Ctrl == _Screen)
+		* but only for top-level forms or non-sizeable forms
+		IF (m.Ctrl.ShowWindow == 2 OR m.Ctrl == _Screen) OR m.Ctrl.BorderStyle != 3
 		
 			LOCAL Scale AS Integer
 			LOCAL WidthAdjustment AS Integer
