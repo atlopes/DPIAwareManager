@@ -518,12 +518,15 @@ Define Class DPIAwareManager As Custom
 		This.SaveOriginalProperty(m.Ctrl, "MaxWidth")
 		This.SaveOriginalProperty(m.Ctrl, "MinHeight")
 		This.SaveOriginalProperty(m.Ctrl, "MinWidth")
+		This.SaveOriginalProperty(m.Ctrl, "PictureMargin")
+		This.SaveOriginalProperty(m.Ctrl, "PictureSpacing")
 		This.SaveOriginalProperty(m.Ctrl, "RowHeight")
 		This.SaveOriginalProperty(m.Ctrl, "Top")
 		This.SaveOriginalProperty(m.Ctrl, "Width")
 
 		This.SaveGraphicAlternatives(m.Ctrl, "DisabledPicture")
 		This.SaveGraphicAlternatives(m.Ctrl, "DownPicture")
+		This.SaveGraphicAlternatives(m.Ctrl, "DragIcon")
 		This.SaveGraphicAlternatives(m.Ctrl, "Icon")
 		This.SaveGraphicAlternatives(m.Ctrl, "MouseIcon")
 		This.SaveGraphicAlternatives(m.Ctrl, "Picture")
@@ -960,6 +963,8 @@ Define Class DPIAwareManager As Custom
 			* if we are not growing, calculate the margin and border first to arrange more space for the text
 			IF !m.IsGrowing
 				This.AdjustFixedPropertyValue(m.Ctrl, "Margin", m.XYRatio, m.NewXYRatio, .NULL., .T.)
+				This.AdjustFixedPropertyValue(m.Ctrl, "PictureMargin", m.XYRatio, m.NewXYRatio, .NULL., .T.)
+				This.AdjustFixedPropertyValue(m.Ctrl, "PictureSpacing", m.XYRatio, m.NewXYRatio, .NULL., .T.)
 				This.AdjustFixedPropertyValue(m.Ctrl, "BorderWidth", m.XYRatio, m.NewXYRatio, .NULL., .T.)
 			ENDIF
 			* adjust the font name before adjusting its size
@@ -969,6 +974,8 @@ Define Class DPIAwareManager As Custom
 			* if it is growing, margins are arranged afterward
 			IF m.IsGrowing
 				This.AdjustFixedPropertyValue(m.Ctrl, "BorderWidth", m.XYRatio, m.NewXYRatio, .NULL., .T.)
+				This.AdjustFixedPropertyValue(m.Ctrl, "PictureSpacing", m.XYRatio, m.NewXYRatio, .NULL., .T.)
+				This.AdjustFixedPropertyValue(m.Ctrl, "PictureMargin", m.XYRatio, m.NewXYRatio, .NULL., .T.)
 				This.AdjustFixedPropertyValue(m.Ctrl, "Margin", m.XYRatio, m.NewXYRatio, .NULL., .T.)
 			ENDIF
 		ELSE
@@ -1209,6 +1216,7 @@ Define Class DPIAwareManager As Custom
 		This.FindGraphicAlternative(m.Ctrl, "PictureVal", m.NewDPIScale)
 		This.FindGraphicAlternative(m.Ctrl, "Icon", m.NewDPIScale)
 		This.FindGraphicAlternative(m.Ctrl, "MouseIcon", m.NewDPIScale)
+		This.FindGraphicAlternative(m.Ctrl, "DragIcon", m.NewDPIScale)
 		This.FindGraphicAlternative(m.Ctrl, "DisabledPicture", m.NewDPIScale)
 		This.FindGraphicAlternative(m.Ctrl, "DownPicture", m.NewDPIScale)
 
