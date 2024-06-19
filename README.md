@@ -1,53 +1,50 @@
-_翻译：xinjie   2021.08.03_
-
-_译者注：最新版本的请参考 [atlopes/DPIAwareManager](https://github.com/atlopes/DPIAwareManager)_
-
 # DPIAwareManager
+[English](README.md)|[简体中文](README_CN.md)
 
-一个用于 VFP 应用的 DPI 感知管理器类
+A DPI-aware manager class for VFP applications.
 
-## 用途
+## Purpose
 
-DPIAwareManager 的目的是使 VFP 应用在高 DPI 监视器上更好的使用。
+DPIAwareManager aims to facilitate the use of VFP applications in High DPI monitors.
 
-## 问题的产生
+## The problem
 
-现代的 Windows 系统在运行无 DPI 感知的 VFP 应用时，其文本缩放比例被设置为高于 100%，这和其他 Win32 应用没有区别。
+Modern Windows display DPI-unaware VFP applications in High DPI monitors for which a text-scaling is set higher than 100% as it does with any Win32 application.
 
-Windows 会对渲染的图形对象的位图进行缩放以匹配百分比。因此，这个过程产生的文本和图形并不像开发者最初设计的那样清晰。
+Windows scales the bitmap of the rendered graphic objects to match the percentage. As a result, the process produces text and graphics not as sharp as the developer initially designed.
 
-另一方面，如果 VFP9 应用使用 90 报表引擎，那么也就意味着报表对象的错位和尺寸的不正确。
+In the case of VFP9 applications that use the Report Behavior 90, it also means that reports will have their objects misplaced and incorrectly sized.
 
-## 一个鸡肋的解决方案
+## A halfway solution
 
-VFP9 应用可以包含一个声明，告诉 Windows 自己是可以感知 DPI 变化的。
+A VFP9 application can declare itself to be DPI-aware by including a manifest stating so.
 
-该声明可以让 Windwos 不干涉表单和报表的渲染。就像前面说的那样，也就不会产生模糊和错位的情况。
+This declaration will instruct Windows not to interfere in the rendering of forms and reports. Blurriness and misalignments, as above, won't occur.
 
-但是，在另一方面，当显示比例超过 100% 时，这个声明不起作用。在高 DPI 设置的显示器上，VFP 应用会随着显示比例的提高而变得越来越小。
+But, on the other hand, the application won't honor any display scaling above 100%. In High DPI monitors, set to higher scales, VFP applications will look small and smaller as the percentage increases.
 
-## 一个更彻底的解决方案
+## A more comprehensive solution
 
-DPIAwareManager 类旨在提供一个特定的框架来彻底解决这个问题。应用程序可以使用它来管理屏幕和表单的缩放。
+The DPIAwareManager class aims to address the problem in its entirety by providing a specific framework that an application may use to manage the scaling of screen and forms objects.
 
-被管理的应用能够感知其运行的显示器的设置，并自动调整图像的位置和大小。
+A managed application becomes aware of the conditions of the monitor(s) on which it displays its forms and automatically adjusts the dimensional and positional properties of the graphic objects.
 
-由于这些条件可能会变化，所以，这一过程是持续的。用户可能会将 Screen 或顶层表单移动到不同的显示器，或者更改显示器的显示比例，而管理器会在更改时对其做出响应。
+Since the conditions may vary during the execution of the application, the awareness is a continuing process. The user may move the screen or top-level forms to monitors with different scales or change the monitor's text size percentage, and the manager reacts to changes as these as they happen.
 
-管理器试图在后台静默工作。理想情况下，Screen 和表单甚至都不知道它们已经可以感知这些变化。
+The manager tries to be as unobtrusive as possible. Ideally, the application screen and forms won't even notice they've become DPI-aware.
 
-对于这种透明，也提供更精细的控制，可以让应用、表单或控件被排除在这种控制之外。
+For the cases where this transparency is not possible or desirable, the manager grants a more refined control to the application, the form, or the control.
 
-请参考：[Windows 上的高 DPI 桌面应用程序开发](https://docs.microsoft.com/zh-cn/windows/win32/hidpi/high-dpi-desktop-application-development-on-windows)
+Reference reading: [High-DPI application development](https://docs.microsoft.com/en-us/windows/win32/hidpi/high-dpi-desktop-application-development-on-windows)
 
-## 基本使用方法
+## In use (basics)
 
-DPIAwareManager 类在一个 PRG 文件中定义。执行它就可以。
+DPIAwareManager class definition comes in a single program file. Executing it will be enough to put the class in scope.
 
-如果需要管理表单或者 `_Screen` 对象，只需要调用 Manage() 方法。对于不同的应用程序框架，你或许要用下面的方式：
+To manage a form or the `_Screen` object, call the `Manage()` method. Depending on the application framework, this may proceed in different manners.
 
 ```foxpro
-* 典型情况下与表单管理器集成
+* integration with a typical form manager
 LOCAL DPI AS DPIAwareManager
 
 m.DPI = CREATEOBJECT("DPIAwareManager")
@@ -59,40 +56,40 @@ m.DPI.Manage(m.FormReference)
 m.FormReference.Show()
 ```
 
-在没有全局的表单管理器的情况下，表单也可自己启动自己的 DPI 感知管理器
+In the absence of a central form manager in the application, forms can initiate their DPI-aware management.
 
 ```foxpro
-* 没有表单管理器，表单是“自维护”的
+* no form manager, forms are on their own
 PUBLIC DPI AS DPIAwareManager
 
 m.DPI = CREATEOBJECT("DPIAwareManager")
 
 DO someform.scx
 
-* 表单的 Init() 事件中：
+* In the form's Init() method:
 m.DPI.Manage(This)
 ```
 
-## 参考资料
+## Reference
 
-[wiki](https://github.com/atlopes/DPIAwareManager/wiki).
+Available from the repository's [wiki](https://github.com/atlopes/DPIAwareManager/wiki).
 
-## 快速测试
+## Quick testing
 
-管理器是针对每个显示器的，因此，你可以使用具有不同显示比例的显示器进行测试。
+The manager is per-monitor aware, so you may work with different monitors having different scales.
 
-要运行测试，你需要在 test 文件夹中编译项目，然后运行 dpi-testing.exe 。
+To experiment, build the project in the testing folder and run the resulting dpi-testing executable.
 
-重要提示：可执行文件名必须是"dpi-testing.exe"，以便使用应用程序清单。
+Important: The executable filename must be "dpi-testing.exe" so that the builder will link the manifest into the executable.
 
-如果你想在自己的表单中进行测试，那么你可以在 test 文件夹中放入自己表单的副本，并处理好错误处理程序，因为这里没有任何的错误处理程序。
+To try with forms of your own, drop a set of self-contained copies in the testing/forms folder. Don't forget to include both SCX and SCT files and note that the testing has no error handler in place.
 
-你或许想试试顶层表单，或者在屏幕中的表单，或者在几个不同的显示器上用几个顶层表单进行测试，那么，你可以试试:)
+You may want to try with top-level or in-screen forms. Testing with several top-level forms in different monitors will demonstrate that an application may have forms of different scales running at the same time.
 
-重要提示：这是一项正在进行的工作。它并没有进行过更全面的测试。你需要做好备份工作，以免发生意外！
+Important note: work in progress. It was not tested outside the particular environment of its development. Things may be missing or not working at all.
 
-## 鸣谢
+## Acknowledgements and credits
 
-- DPIAwareManager 类中的缩放器是建立在 Irwin Rodriguez 的 [VFPStretch](https://github.com/Irwin1985/VFPStretch) 逻辑基础之上；
-- DPI-Testing 应用使用了 Cesar Chalom 的 [FoxyDialog](http://vfpimaging.blogspot.com/2020/06/foxydialogs-v10-going-much-forward-with.html)，它需要 Christian Ehlscheid 的 [VFP2C32-英文](https://github.com/ChristianEhlscheid/vfp2c32)([VFP2C32-简体中文](https://github.com/vfp9/vfp2c32))；
-- 图标由 [Icons8](https://icons8.com/) 提供，它是非凡的图标创造者。
+- The sizer components of the DPIAwareManager class build on the logic of Irwin Rodriguez's [VFPStretch](https://github.com/Irwin1985/VFPStretch).
+- The DPI-Testing application uses [FoxyDialog](http://vfpimaging.blogspot.com/2020/06/foxydialogs-v10-going-much-forward-with.html), by Cesar Chalom, which requires the [VFP2C32](https://github.com/ChristianEhlscheid/vfp2c32) library, by Christian Ehlscheid.
+- Graphics by [Icons8](https://icons8.com/), creators of extraordinary iconography.
