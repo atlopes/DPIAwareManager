@@ -2,6 +2,7 @@
 SET PROCEDURE TO (SYS(16)) ADDITIVE
 
 #DEFINE WM_DPICHANGED						0x02E0
+#DEFINE WM_SETICON							0x0080
 
 #DEFINE SIZEOF_MONITORINFO					0h28000000
 
@@ -14,15 +15,28 @@ SET PROCEDURE TO (SYS(16)) ADDITIVE
 #DEFINE DPIAW_RELATIVE_TOP_LEFT			0x01
 #DEFINE DPIAW_CONSTRAINT_DIMENSION		0x02
 
+#DEFINE ICON_SMALL	0
+#DEFINE ICON_BIG		1
+
+#DEFINE DC_LOGPIXELSX	88
+
 Define Class DPIAwareManager As Custom
 
 	* process DPI awareness type
 	AwarenessType = 0
 
+	* logging
+	Logging = .F.
+
 	* compensation for what is cut from a form when changing DPI (from 125 to 300%)
 	* to be confirmed...
 	WidthAdjustments = "2,6,8,10,12,14,16,18"
 	HeightAdjustments = "8,17,25,32,40,49,56,63"
+
+	* the collection of alternative fonts
+	ADD OBJECT PROTECTED AlternativeFontNames AS Collection
+	HIDDEN AlternativeFontNamesScale
+	AlternativeFontNamesScale = DPI_STANDARD_SCALE
 
 	* system function to gather information regarding DPI
 	HIDDEN SystemInfoFunction
@@ -30,26 +44,30 @@ Define Class DPIAwareManager As Custom
 
 	FUNCTION Init
 
-		DECLARE LONG GetDC IN WIN32API ;
+		DECLARE LONG GetWindowDC IN WIN32API AS dpiaw_GetWindowDC ;
 			LONG hWnd
-		DECLARE LONG GetWindowDC IN WIN32API ;
-			LONG hWnd
-		DECLARE LONG GetDeviceCaps IN WIN32API  ;
+		DECLARE LONG ReleaseDC IN WIN32API AS dpiaw_ReleaseDC ;
+			LONG hWnd, LONG hDC
+		DECLARE LONG GetDeviceCaps IN WIN32API AS dpiaw_GetDeviceCaps ;
 			LONG hDC, INTEGER CapIndex
-		DECLARE LONG MonitorFromWindow IN WIN32API ;
+		DECLARE LONG MonitorFromWindow IN WIN32API AS dpiaw_MonitorFromWindow ;
 			LONG hWnd, INTEGER Flags
-		DECLARE INTEGER GetMonitorInfo IN WIN32API ;
+		DECLARE INTEGER GetMonitorInfo IN WIN32API AS dpiaw_GetMonitorInfo ;
 			LONG hMonitor, STRING @ MonitorInfo
+		DECLARE INTEGER ExtractIcon IN shell32 AS dpiaw_ExtractIcon ;
+			INTEGER hInst, STRING FileName, INTEGER IndexIcon
+		DECLARE INTEGER SendMessage IN user32 AS dpiaw_SendMessage ;
+			INTEGER hWnd, INTEGER Msg, INTEGER wParam, INTEGER lParam
 
 		TRY
-			DECLARE LONG GetDpiForMonitor IN SHCORE.DLL ;
+			DECLARE LONG GetDpiForMonitor IN SHCORE.DLL AS dpiaw_GetDpiForMonitor ;
 				LONG hMonitor, INTEGER dpiType, INTEGER @ dpiX, INTEGER @ dpiY
 			This.SystemInfoFunction = 1
 		CATCH
 		ENDTRY
 
 		TRY
-			DECLARE INTEGER GetDpiForWindow IN WIN32API ;
+			DECLARE INTEGER GetDpiForWindow IN WIN32API AS dpiaw_GetDpiForWindow ;
 				LONG hWnd
 			This.SystemInfoFunction = 2
 		CATCH
@@ -57,15 +75,15 @@ Define Class DPIAwareManager As Custom
 
 		* get the awareness type of the process
 		TRY
-			DECLARE INTEGER IsProcessDPIAware IN WIN32API
-			IF IsProcessDPIAware() != 0
+			DECLARE INTEGER IsProcessDPIAware IN WIN32API AS dpiaw_IsProcessDPIAware
+			IF dpiaw_IsProcessDPIAware() != 0
 				This.AwarenessType = 1
 			ENDIF
 			TRY
-				DECLARE INTEGER GetProcessDpiAwareness IN Shcore.dll LONG Process, LONG @ Awareness
+				DECLARE INTEGER GetProcessDpiAwareness IN Shcore.dll AS dpiaw_GetProcessDpiAwareness LONG Process, LONG @ Awareness
 				LOCAL Awareness AS Integer
 				m.Awareness = 0
-				IF GetProcessDpiAwareness(0, @m.Awareness) == 0
+				IF dpiaw_GetProcessDpiAwareness(0, @m.Awareness) == 0
 					This.AwarenessType = m.Awareness
 				ENDIF
 			CATCH
@@ -75,31 +93,90 @@ Define Class DPIAwareManager As Custom
 
 	ENDFUNC
 
+****************************************************************************************
+#DEFINE	METHODS_MANAGEMENT
+****************************************************************************************
+
 	* Manage
 	* Puts a form under DPI-awareness management
 	* It should be called before the form is shown
-	FUNCTION Manage (AForm AS Form) AS Void
+	FUNCTION Manage (AForm AS Form, Constraints AS Integer) AS Void
 
 		* add DPI-aware related properties
-		This.AddDPIProperty(m.AForm, "hMonitor", MonitorFromWindow(m.AForm.HWnd, 0))
 		This.AddDPIProperty(m.AForm, "DPIAwareManager", This)
+		This.AddDPIProperty(m.AForm, "hMonitor", dpiaw_MonitorFromWindow(m.AForm.HWnd, 0))
+		This.AddDPIProperty(m.AForm, "DPIMonitorInfo", This.GetMonitorInfo(m.AForm.hMonitor, .F.))
+		This.AddDPIProperty(m.AForm, "DPIMonitorClientAreaInfo", This.GetMonitorInfo(m.AForm.hMonitor, .T.))
 		This.AddDPIProperty(m.AForm, "DPIScale", This.GetMonitorDPIScale(m.AForm))
 		This.AddDPIProperty(m.AForm, "DPINewScale", m.AForm.DPIScale)
-		This.AddDPIProperty(m.AForm, "DPIAutoConstraint", IIF(m.AForm = _Screen OR m.AForm.ShowWindow = 2, DPIAW_NO_REPOSITION, DPIAW_RELATIVE_TOP_LEFT))
-
+		This.AddDPIProperty(m.AForm, "DPIAutoConstraint", ;
+			IIF(PCOUNT() == 1, ;
+				IIF(m.AForm == _Screen OR m.AForm.ShowWindow == 2, DPIAW_NO_REPOSITION, DPIAW_RELATIVE_TOP_LEFT), ;
+				m.Constraints))
+		This.AddDPIProperty(m.AForm, "DPIManagerEvent", "Manage")
+		This.AddDPIProperty(m.AForm, "DPIScaling", .F.)
+		
 		* save the original value of dimensional and positional properties of the form
 		This.SaveContainer(m.AForm)
 
 		* bind the form to the two listeners for changes of the DPI scale
-		IF m.AForm = _Screen
+		IF m.AForm == _Screen
 			BINDEVENT(_Screen, "Moved", This, "CheckDPIScaleChange")
 		ENDIF
 		BINDEVENT(m.AForm.hWnd, WM_DPICHANGED, This, "WMCheckDPIScaleChange")
+		* and to clean-up methods
+		BINDEVENT(m.AForm, "Destroy", This, "CleanUp") 
 
 		* if the form was created in a non 100% scale monitor, perform an initial scaling without preadjustment
 		IF m.AForm.DPINewScale != DPI_STANDARD_SCALE
+			IF m.AForm = _Screen AND PEMSTATUS(_Screen, "DPIAwareScreenManager", 5)
+				_Screen.DPIAwareScreenManager.SelfManage(DPI_STANDARD_SCALE, m.AForm.DPINewScale) 
+			ENDIF
 			This.Scale(m.AForm, DPI_STANDARD_SCALE, m.AForm.DPINewScale, .T.)
 		ENDIF
+
+	ENDFUNC
+
+	* ManageFont
+	* Prepare a font to be managed whenever it occurs as a FontName control property
+	FUNCTION ManageFont (OriginalFontName AS String, Scale AS Integer, AdjustedFontName AS String)
+
+		LOCAL FontIndex AS Integer
+		LOCAL AlternativeFont AS DPIAwareAlternativeFont
+
+		* locate an existing font name controller object in the collection
+		m.FontIndex = This.AlternativeFontNames.GetKey(UPPER(m.OriginalFontName))
+		* create it, if it does not exist
+		IF m.FontIndex == 0
+			m.AlternativeFont = CREATEOBJECT("DPIAwareAlternativeFont", m.OriginalFontName)
+			This.AlternativeFontNames.Add(m.AlternativeFont, UPPER(m.OriginalFontName))
+		ELSE
+			m.AlternativeFont = This.AlternativeFontNames.Item(m.FontIndex)
+		ENDIF
+
+		* add the alternative font name for a given scale (and up)
+		m.AlternativeFont.AddAlternative(m.Scale, m.AdjustedFontName)
+
+	ENDFUNC
+
+	* CleanUp
+	* Clean up a managed form
+	FUNCTION CleanUp ()
+
+		LOCAL ARRAY SourceEvent(1)
+		AEVENTS(m.SourceEvent, 0)
+
+		LOCAL DPIAwareForm AS Form
+		m.DPIAwareForm = m.SourceEvent(1)
+
+		TRY
+			m.DPIAwareForm.DPIMonitorInfo = .NULL.
+		CATCH
+		ENDTRY
+		TRY
+			m.DPIAwareForm.DPIMonitorClientAreaInfo = .NULL.
+		CATCH
+		ENDTRY
 
 	ENDFUNC
 
@@ -112,17 +189,20 @@ Define Class DPIAwareManager As Custom
 	* The scale is a percentage (100%, 125%, ...).
 	FUNCTION GetMonitorDPIScale (DPIAwareForm AS Form) AS Integer
 	LOCAL dpiX AS Integer, dpiY AS Integer
+	LOCAL hDC AS Integer
 
 		* use the best available function to get the information
 		TRY
 			DO CASE
 			CASE This.SystemInfoFunction = 2
-				m.dpiX = GetDpiForWindow(m.DPIAwareForm.HWnd)
+				m.dpiX = dpiaw_GetDpiForWindow(m.DPIAwareForm.HWnd)
 			CASE This.SystemInfoFunction = 1		&& not for Per-Monitor aware (AwarenessType = 2)
 				STORE 0 TO m.dpiX, m.dpiY
-				GetDpiForMonitor(m.DPIAwareForm.hMonitor, 0, @m.dpiX, @m.dpiY)
+				dpiaw_GetDpiForMonitor(m.DPIAwareForm.hMonitor, 0, @m.dpiX, @m.dpiY)
 			OTHERWISE
-				m.dpiX = GetDeviceCaps(GetWindowDC(m.DPIAwareForm.HWnd), 88)
+				m.hDC = dpiaw_GetWindowDC(m.DPIAwareForm.HWnd)
+				m.dpiX = dpiaw_GetDeviceCaps(m.hDC, DC_LOGPIXELSX)
+				dpiaw_ReleaseDC(m.DPIAwareForm.HWnd, m.hDC)
 			ENDCASE
 		CATCH
 			m.dpiX = DPI_STANDARD
@@ -143,7 +223,7 @@ Define Class DPIAwareManager As Custom
 
 		m.MonitorInfoStructure = SIZEOF_MONITORINFO + REPLICATE(CHR(0), 36)
 
-		GetMonitorInfo(m.hMonitor, @m.MonitorInfoStructure)
+		dpiaw_GetMonitorInfo(m.hMonitor, @m.MonitorInfoStructure)
 
 		IF !m.IsWorkArea
 			m.Rect = SUBSTR(m.MonitorInfoStructure, 5, 16)
@@ -163,6 +243,22 @@ Define Class DPIAwareManager As Custom
 
 	ENDFUNC
 
+	* SetMonitorInfo
+	* Sets positional, dimensional, and DPI inforation of current monitor
+	FUNCTION SetMonitorInfo (DPIAwareForm AS Form, Source AS Form) 
+
+		IF PCOUNT() == 1
+			m.DPIAwareForm.hMonitor = dpiaw_MonitorFromWindow(m.DPIAwareForm.hWnd, 0)
+		ELSE
+			m.DPIAwareForm.hMonitor = m.Source.hMonitor
+		ENDIF
+		m.DPIAwareForm.DPIMonitorInfo = .NULL.
+		m.DPIAwareForm.DPIMonitorInfo = This.GetMonitorInfo(m.DPIAwareForm.hMonitor, .F.)
+		m.DPIAwareForm.DPIMonitorClientAreaInfo = .NULL.
+		m.DPIAwareForm.DPIMonitorClientAreaInfo = This.GetMonitorInfo(m.DPIAwareForm.hMonitor, .T.)
+
+	ENDFUNC
+
 	* GetFormDPIScale
 	* Returns the DPI Scale of the form that contains an object.
 	FUNCTION GetFormDPIScale (DPIAwareObject AS Object) AS Integer
@@ -174,7 +270,6 @@ Define Class DPIAwareManager As Custom
 		RETURN IIF(!ISNULL(m.ObjectForm), m.ObjectForm.DPIScale, DPI_STANDARD_SCALE)
 			
 	ENDFUNC
-
 
 ****************************************************************************************
 #DEFINE METHODS_AKNOWLEDGE_AND_REACT_TO_DPI_CHANGES
@@ -201,6 +296,11 @@ Define Class DPIAwareManager As Custom
 			RETURN 0
 		ENDIF
 
+		m.DPIAwareForm.DPIManagerEvent = "WindowsMessage"
+
+		* refresh information on the monitor where the form is being displayed
+		This.SetMonitorInfo(m.DPIAwareForm)
+
 		* proceed to the actual method that performs the rescaling (the new DPI scale is passed as a percentage)
 		RETURN This.ChangeFormDPIScale(m.DPIAwareForm, BITAND(m.wParam, 0x07FFF) / DPI_STANDARD * DPI_STANDARD_SCALE)
 
@@ -216,12 +316,19 @@ Define Class DPIAwareManager As Custom
 		LOCAL DPIAwareForm AS Form
 		m.DPIAwareForm = m.SourceEvent(1)
 
+		* refresh information on the monitor where the form is being displayed
+		This.SetMonitorInfo(m.DPIAwareForm)
+
 		IF This.ChangeFormDPIScale(m.DPIAwareForm, This.GetMonitorDPIScale(m.DPIAwareForm)) = 0
+
+			m.DPIAwareForm.DPIManagerEvent = "Moved"
 
 			IF m.DPIAwareForm = _Screen
 
 				FOR EACH m.DPIAwareForm AS Form IN _Screen.Forms
-					IF m.DPIAwareForm.ShowWindow = 0
+					IF m.DPIAwareForm.BaseClass == "Form" AND m.DPIAwareForm.ShowWindow = 0 AND PEMSTATUS(m.DPIAwareForm, "DPIAware", 5) AND m.DPIAwareForm.DPIAware
+						* refresh information on the monitor where the form is being displayed
+						This.SetMonitorInfo(m.DPIAwareForm, _Screen)
 						This.ChangeFormDPIScale(m.DPIAwareForm, _Screen.DPIScale)
 					ENDIF
 				ENDFOR
@@ -238,14 +345,12 @@ Define Class DPIAwareManager As Custom
 
 		LOCAL Ops AS Exception
 
-		* refresh information on the monitor where the form is being displayed
-		m.DPIAwareForm.hMonitor = MonitorFromWindow(m.DPIAwareForm.HWnd, 0)
-
-		* act only if the scale of the form has changed (the _Screen may only have moved)
+		* act only if the scale of the form has changed (the _Screen may have only moved)
 		IF m.NewDPIScale != m.DPIAwareForm.DPIScale
 
 			LOCAL IsMaximized AS Logical
-			m.IsMaximized = (m.DPIAwareForm.WindowState = 2)
+
+			m.IsMaximized = (m.DPIAwareForm.WindowState == 2)
 
 			m.DPIAwareForm.DPINewScale = m.NewDPIScale
 			m.DPIAwareForm.LockScreen = .T.
@@ -347,8 +452,10 @@ Define Class DPIAwareManager As Custom
 
 		LOCAL SubCtrl AS Object
 
-		IF !m.Ctrl.BaseClass == "Custom"
+		IF !m.Ctrl.BaseClass $ "Custom,Timer"
 			This.SaveOriginalInfo(m.Ctrl)
+		ELSE
+			RETURN
 		ENDIF
 
 		DO CASE 
@@ -397,22 +504,65 @@ Define Class DPIAwareManager As Custom
 			This.AddDPIProperty(m.Ctrl, "DPIAware", .T.)
 		ENDIF
 		This.SaveOriginalProperty(m.Ctrl, "Anchor")
-		This.SaveOriginalProperty(m.Ctrl, "Width")
-		This.SaveOriginalProperty(m.Ctrl, "MinWidth")
-		This.SaveOriginalProperty(m.Ctrl, "MaxWidth")
-		This.SaveOriginalProperty(m.Ctrl, "Height")
-		This.SaveOriginalProperty(m.Ctrl, "MinHeight")
-		This.SaveOriginalProperty(m.Ctrl, "MaxHeight")
-		This.SaveOriginalProperty(m.Ctrl, "Left")
-		This.SaveOriginalProperty(m.Ctrl, "Top")
+		This.SaveOriginalProperty(m.Ctrl, "BorderWidth")
+		This.SaveOriginalProperty(m.Ctrl, "ColumnWidths")
+		This.SaveOriginalProperty(m.Ctrl, "DrawWidth")
+		This.SaveOriginalProperty(m.Ctrl, "FontName")
 		This.SaveOriginalProperty(m.Ctrl, "FontSize")
-		This.SaveOriginalProperty(m.Ctrl, "Margin")
-		This.SaveOriginalProperty(m.Ctrl, "RowHeight")
+		This.SaveOriginalProperty(m.Ctrl, "GridLineWidth")
 		This.SaveOriginalProperty(m.Ctrl, "HeaderHeight")
+		This.SaveOriginalProperty(m.Ctrl, "Height")
+		This.SaveOriginalProperty(m.Ctrl, "Left")
+		This.SaveOriginalProperty(m.Ctrl, "Margin")
+		This.SaveOriginalProperty(m.Ctrl, "MaxHeight")
+		This.SaveOriginalProperty(m.Ctrl, "MaxWidth")
+		This.SaveOriginalProperty(m.Ctrl, "MinHeight")
+		This.SaveOriginalProperty(m.Ctrl, "MinWidth")
+		This.SaveOriginalProperty(m.Ctrl, "PictureMargin")
+		This.SaveOriginalProperty(m.Ctrl, "PictureSpacing")
+		This.SaveOriginalProperty(m.Ctrl, "RowHeight")
+		This.SaveOriginalProperty(m.Ctrl, "Top")
+		This.SaveOriginalProperty(m.Ctrl, "Width")
 
+		This.SaveGraphicAlternatives(m.Ctrl, "DisabledPicture")
+		This.SaveGraphicAlternatives(m.Ctrl, "DownPicture")
+		This.SaveGraphicAlternatives(m.Ctrl, "DragIcon")
+		This.SaveGraphicAlternatives(m.Ctrl, "Icon")
+		This.SaveGraphicAlternatives(m.Ctrl, "MouseIcon")
 		This.SaveGraphicAlternatives(m.Ctrl, "Picture")
 		This.SaveGraphicAlternatives(m.Ctrl, "PictureVal")
-		This.SaveGraphicAlternatives(m.Ctrl, "Icon")
+
+		LOCAL CtrlsForm AS Form
+
+		* if DPI awareness is controlled by the control itself or by its parents, give it the opportunity to save additional information
+		IF PEMSTATUS(m.Ctrl, "DPIAwareSelfControl", 5)
+
+			TRY
+				DO CASE
+
+				* the control manages itself
+				CASE m.Ctrl.DPIAwareSelfControl == 1
+
+					m.Ctrl.DPIAwareSaveOriginalInfo()
+
+				* the form manages the control
+				CASE m.Ctrl.DPIAwareSelfControl == 2
+
+					m.CtrlsForm = This.GetThisform(m.Ctrl)
+					IF !ISNULL(m.CtrlsForm)
+						m.CtrlsForm.DPIAwareSaveOriginalInfo(m.Ctrl)
+					ENDIF
+
+				* the _Screen manages the control
+				CASE m.Ctrl.DPIAwareSelfControl == 3
+
+					_Screen.DPIAwareScrenManager.DPIAwareSaveOriginalInfo(m.Ctrl)
+
+				ENDCASE
+			CATCH				&& ignore any errors, the method may not have been implemented
+			ENDTRY
+
+		ENDIF
 
 	ENDFUNC
 
@@ -424,11 +574,13 @@ Define Class DPIAwareManager As Custom
 	FUNCTION SaveGraphicAlternatives (Ctrl AS Object, Property AS String)
 
 		LOCAL AlternativesList AS String
-		LOCAL AlternativeLevel AS Integer
+		LOCAL AlternativeLevel AS String
 		LOCAL ARRAY Properties[1]
 		LOCAL PropertyIndex AS Integer
 		LOCAL PropertyCheck AS String
 		LOCAL PropertyCheckLen AS Integer
+		LOCAL Property100 AS Logical
+		LOCAL Level100 AS String
 
 		IF !PEMSTATUS(m.Ctrl, m.Property, 5)
 			RETURN
@@ -437,19 +589,30 @@ Define Class DPIAwareManager As Custom
 		m.AlternativesList = ""
 		m.PropertyCheck = UPPER(m.Property)
 		m.PropertyCheckLen = LEN(m.PropertyCheck)
+		m.Property100 = .F.
+		m.Level100 = "100"
 
-		* look for all alternatives and create a single comma separeted list 
+		* look for all alternatives and create a comma separated list 
 		FOR m.PropertyIndex = 1 TO AMEMBERS(m.Properties, m.Ctrl, 0)
 			IF LEFT(m.Properties[m.PropertyIndex], m.PropertyCheckLen) == m.PropertyCheck
 				m.AlternativeLevel = SUBSTR(m.Properties[m.PropertyIndex], m.PropertyCheckLen + 1)
 				IF m.AlternativeLevel == LTRIM(STR(VAL(m.AlternativeLevel))) AND VAL(m.AlternativeLevel) >= DPI_STANDARD_SCALE
 					m.AlternativesList = m.AlternativesList + IIF(EMPTY(m.AlternativesList), "", ",") + m.AlternativeLevel
+					IF !m.Property100
+						m.Property100 = m.AlternativeLevel == m.Level100
+					ENDIF
 				ENDIF
 			ENDIF
 		ENDFOR
 
-		* if a list was found, store it at a new object property
+		* if a list was found, store it in a new object property
 		IF !EMPTY(m.AlternativesList)
+			* but first make sure there is a version of the graphical alternative for the 100% scale
+			* if it was not set explicitly at design time
+			IF !m.Property100
+				This.AddDPIProperty(m.Ctrl, m.Property + m.Level100, EVALUATE("m.Ctrl." + m.Property))
+				m.AlternativesList = m.AlternativesList + "," + m.Level100
+			ENDIF
 			This.AddDPIProperty(m.Ctrl, "DPIAlternative_" + m.Property, m.AlternativesList)
 		ENDIF
 
@@ -461,21 +624,32 @@ Define Class DPIAwareManager As Custom
 
 	* Scale
 	* Scale a container from one scale to another.
-	FUNCTION Scale (Ctnr AS Object, DPIScale AS Number, DPINewScale AS Number, DontPreAdjust AS Logical)
+	FUNCTION Scale (Ctnr AS Object, DPIScale AS Number, DPINewScale AS Number, SkipPreAdjust AS Logical)
 
 		LOCAL IsForm AS Logical
 		LOCAL SubCtrl AS Object
 		LOCAL Scalable AS Logical
+		LOCAL AlternativeFont AS DPIAwareAlternativeFont
+
+		* prepare font name alternatives for a new scale
+		* aternatives will persist until a new scale is set
+		IF m.DPINewScale != This.AlternativeFontNamesScale
+			FOR EACH m.AlternativeFont IN This.AlternativeFontNames
+				m.AlternativeFont.FindAlternative(m.DPINewScale)
+			ENDFOR
+			This.AlternativeFontNamesScale = m.DPINewScale
+		ENDIF
 
 		m.IsForm = m.Ctnr.BaseClass == 'Form'
 		IF m.IsForm
+			m.Ctnr.DPIScaling = .T.
 			This.SetAnchor(m.Ctnr, .T.)
 		ENDIF
 
-		* forms require a pre-adjustement because the way Windows/VFP(?) pass from one scale to another,
+		* forms require a pre-adjustement because of the way Windows/VFP(?) pass from one scale to another,
 		*   removing a few fixed pixels from the form dimensions (width and height) - this is done automatically as soon
 		*   as the DPI scales changes and before the DPIAwareManager has a chance to step in
-		IF m.IsForm AND !m.DontPreAdjust
+		IF m.IsForm AND ! m.SkipPreAdjust
 			This.PreAdjustFormDimensions(m.Ctnr, m.DPIScale, m.DPINewScale)
 		ENDIF
 
@@ -492,11 +666,12 @@ Define Class DPIAwareManager As Custom
 		IF !m.Scalable
 			IF m.IsForm
 				This.SetAnchor(m.Ctnr, .F.)
+				m.Ctnr.DPIScaling = .F.
 			ENDIF
 			RETURN
 		ENDIF
 
-		* all anchors in a form are set to zero, so that the scale won't trigger resize and reposition of contained controls
+		* all anchors in a form are set to zero, so that the scale won't trigger the resizing and repositioning of contained controls
 		IF m.IsForm
 
 			m.Ctnr.LockScreen = .T.
@@ -515,6 +690,7 @@ Define Class DPIAwareManager As Custom
 		IF m.IsForm
 
 			This.SetAnchor(m.Ctnr, .F.)
+			m.Ctnr.DPIScaling = .F.
 			m.Ctnr.LockScreen = .F.
 
 		ENDIF
@@ -551,7 +727,7 @@ Define Class DPIAwareManager As Custom
 			m.AutoSizeCtrl = .F.
 		ENDIF
 
-		IF !m.Ctrl.BaseClass == 'Custom'
+		IF !m.Ctrl.BaseClass $ 'Custom,Timer'
 			This.AdjustSize(m.Ctrl, m.DPIScale, m.DPINewScale)
 		ENDIF
 
@@ -562,7 +738,7 @@ Define Class DPIAwareManager As Custom
 
 		CASE m.Ctrl.BaseClass == 'Pageframe'
 
-			* the pageframe is already scaled, but scaling pages may still affect the pagframe size
+			* the pageframe is already scaled, but scaling pages may still affect the pageframe size
 			LOCAL TabSize AS Number, NewTabSize AS Number
 			m.TabSize = 0
 			WITH m.Ctrl AS PageFrame
@@ -619,7 +795,7 @@ Define Class DPIAwareManager As Custom
 			ENDWITH
 
 			FOR EACH m.SubCtrl AS Column IN m.Ctrl.Columns
-				* the column will have extra plus or minus space, since some components of the grid width do not grow
+				* the column will have extra plus or minus space, since some components of the grid width do not scale
 				This.AdjustSize(m.SubCtrl, m.DPIScale, m.DPINewScale, m.FixedWeight)
 				This.Scale(m.SubCtrl, m.DPIScale, m.DPINewScale)
 			ENDFOR
@@ -732,26 +908,31 @@ Define Class DPIAwareManager As Custom
 	*   pixels when moving from one scale to the other.
 	FUNCTION PreAdjustFormDimensions (Ctrl AS Form, DPIScale AS Number, NewDPIScale AS Number)
 
-		LOCAL Scale AS Integer
-		LOCAL WidthAdjustment AS Integer
-		LOCAL HeightAdjustment AS Integer
+		* but only for top-level forms or non-sizeable forms
+		IF (m.Ctrl.ShowWindow == 2 OR m.Ctrl == _Screen) OR m.Ctrl.BorderStyle != 3
+		
+			LOCAL Scale AS Integer
+			LOCAL WidthAdjustment AS Integer
+			LOCAL HeightAdjustment AS Integer
 
-		* scale level: 0 = 100, 1 = 125, 2 = 150, etc.
-		m.Scale = This.GetDPILevel(m.NewDPIScale)
-		m.WidthAdjustment = VAL(GETWORDNUM(This.WidthAdjustments, m.Scale, ","))
-		m.HeightAdjustment = VAL(GETWORDNUM(This.HeightAdjustments, m.Scale, ","))
+			* scale level: 0 = 100, 1 = 125, 2 = 150, etc.
+			m.Scale = This.GetDPILevel(m.NewDPIScale)
+			m.WidthAdjustment = VAL(GETWORDNUM(This.WidthAdjustments, m.Scale, ","))
+			m.HeightAdjustment = VAL(GETWORDNUM(This.HeightAdjustments, m.Scale, ","))
 
-		* add the adjustments to the cutted dimensions, to compensate for the cutting 
-		m.Ctrl.Width = m.Ctrl.Width + m.WidthAdjustment
-		m.Ctrl.Height = m.Ctrl.Height + m.HeightAdjustment
+			* add the adjustments to the cutted dimensions, to compensate for the cutting 
+			m.Ctrl.Width = m.Ctrl.Width + m.WidthAdjustment
+			m.Ctrl.Height = m.Ctrl.Height + m.HeightAdjustment
 
-		m.Scale = This.GetDPILevel(m.DPIScale)
-		m.WidthAdjustment = VAL(GETWORDNUM(This.WidthAdjustments, m.Scale, ","))
-		m.HeightAdjustment = VAL(GETWORDNUM(This.HeightAdjustments, m.Scale, ","))
+			m.Scale = This.GetDPILevel(m.DPIScale)
+			m.WidthAdjustment = VAL(GETWORDNUM(This.WidthAdjustments, m.Scale, ","))
+			m.HeightAdjustment = VAL(GETWORDNUM(This.HeightAdjustments, m.Scale, ","))
 
-		* but remove the adjustments made previously
-		m.Ctrl.Width = m.Ctrl.Width - m.WidthAdjustment
-		m.Ctrl.Height = m.Ctrl.Height - m.HeightAdjustment
+			* but remove the adjustments made previously
+			m.Ctrl.Width = m.Ctrl.Width - m.WidthAdjustment
+			m.Ctrl.Height = m.Ctrl.Height - m.HeightAdjustment
+
+		ENDIF
 
 	ENDFUNC
 
@@ -778,21 +959,32 @@ Define Class DPIAwareManager As Custom
 
 		m.IsForm = m.Ctrl.BaseClass == "Form"
 
-		* row height and header height before font size, unless they're marked as Auto
-		This.AdjustPropertyValue(m.Ctrl, "RowHeight", m.XYRatio, m.NewXYRatio, -1)
-		This.AdjustPropertyValue(m.Ctrl, "HeaderHeight", m.XYRatio, m.NewXYRatio, -1)
-
-		IF !m.Ctrl.BaseClass == "Grid"
-			* if we are not growing, calculate the margin first to arrange more space for the text
+		IF ! m.Ctrl.BaseClass == "Grid"
+			* if we are not growing, calculate the margin and border first to arrange more space for the text
 			IF !m.IsGrowing
 				This.AdjustFixedPropertyValue(m.Ctrl, "Margin", m.XYRatio, m.NewXYRatio, .NULL., .T.)
+				This.AdjustFixedPropertyValue(m.Ctrl, "PictureMargin", m.XYRatio, m.NewXYRatio, .NULL., .T.)
+				This.AdjustFixedPropertyValue(m.Ctrl, "PictureSpacing", m.XYRatio, m.NewXYRatio, .NULL., .T.)
+				This.AdjustFixedPropertyValue(m.Ctrl, "BorderWidth", m.XYRatio, m.NewXYRatio, .NULL., .T.)
 			ENDIF
-			* ajust font size always from its original setting (hence, taken as a "fixed" property)
+			* adjust the font name before adjusting its size
+			This.AdjustFontNameAlternative(m.Ctrl)
+			* adjust font size always from its original setting (hence, taken as a "fixed" property)
 			This.AdjustFixedPropertyValue(m.Ctrl, "FontSize", m.XYRatio, m.NewXYRatio)
 			* if it is growing, margins are arranged afterward
 			IF m.IsGrowing
+				This.AdjustFixedPropertyValue(m.Ctrl, "BorderWidth", m.XYRatio, m.NewXYRatio, .NULL., .T.)
+				This.AdjustFixedPropertyValue(m.Ctrl, "PictureSpacing", m.XYRatio, m.NewXYRatio, .NULL., .T.)
+				This.AdjustFixedPropertyValue(m.Ctrl, "PictureMargin", m.XYRatio, m.NewXYRatio, .NULL., .T.)
 				This.AdjustFixedPropertyValue(m.Ctrl, "Margin", m.XYRatio, m.NewXYRatio, .NULL., .T.)
 			ENDIF
+		ELSE
+			* grids:
+			* row height and header height, unless they're marked as Auto
+			This.AdjustPropertyValue(m.Ctrl, "RowHeight", m.XYRatio, m.NewXYRatio, -1)
+			This.AdjustPropertyValue(m.Ctrl, "HeaderHeight", m.XYRatio, m.NewXYRatio, -1)
+			* other properties
+			This.AdjustFixedPropertyValue(m.Ctrl, "GridLineWidth", m.XYRatio, m.NewXYRatio)
 		ENDIF
 
 		* if we are growing, make sure we grow maximum dimensions before growing
@@ -822,20 +1014,30 @@ Define Class DPIAwareManager As Custom
 		ENDIF
 
 		* for all controls except forms, deal with their position
-		IF !m.IsForm
+		IF ! m.IsForm
 			This.AdjustPropertyValue(m.Ctrl, "Top", m.XYRatio, m.NewXYRatio)
 			This.AdjustPropertyValue(m.Ctrl, "Left", m.XYRatio, m.NewXYRatio)
 		ENDIF
 
-		* finally, take care of the alternate graphics the control may have defined for the new scale
+		* process other positional or dimensional properties
+		This.AdjustFixedPropertyValue(m.Ctrl, "DrawWidth", m.XYRatio, m.NewXYRatio, .NULL., .T.)
+		This.AdjustFixedPropertyValue(m.Ctrl, "ColumnWidths", m.XYRatio, m.NewXYRatio)
+
+		* take care of the alternate graphics the control may have defined for the new scale
 		This.AdjustGraphicAlternatives(m.Ctrl, m.NewDPIScale)
+
+		* reset the form's icon
+		IF m.IsForm
+			This.ResetIcon(m.Ctrl)
+		ENDIF
 
 	ENDFUNC
 
 	* AdjustPropertyValue
-	* Adjusts the value of a property to a new value.
+	* Adjusts the current value of a property to a new value.
 	FUNCTION AdjustPropertyValue (Ctrl AS Object, Property AS String, Ratio AS Number, NewRatio AS Number, Excluded AS Number, ExtraRatio AS Number) AS Logical
 
+		LOCAL CtrlProperty AS String
 		LOCAL Adjusted AS Logical
 		LOCAL OriginalValue AS Number
 		LOCAL CurrentValue AS Number
@@ -852,7 +1054,8 @@ Define Class DPIAwareManager As Custom
 				IF PCOUNT() < 5 OR ISNULL(m.Excluded) OR m.Excluded != m.OriginalValue
 
 					* get the current value, stored in the property, and calculate the new one for a new scale
-					m.CurrentValue = EVALUATE("m.Ctrl." + m.Property)
+					m.CtrlProperty = "m.Ctrl." + m.Property
+					m.CurrentValue = EVALUATE(m.CtrlProperty)
 					IF PCOUNT() < 6
 						m.NewAdjustedRatio = m.NewRatio
 					ELSE
@@ -861,20 +1064,15 @@ Define Class DPIAwareManager As Custom
 					m.NewCurrentValue = m.CurrentValue / m.Ratio * m.NewAdjustedRatio
 
 					* store the final (rounded) value
-					STORE ROUND(m.NewCurrentValue, 0) TO ("m.Ctrl." + m.Property)
-
-					* log the adjustment
-					TRY
-						IF USED("DPIAwareManagerLog")
-							INSERT INTO DPIAwareManagerLog (ControlName, ClassName, Property, Original, Ratio, NewRatio, ;
-									FixedProperty, ScaledBefore, Calculated, Stored) ;
-								VALUES (m.Ctrl.Name, m.Ctrl.Class, m.Property, m.OriginalValue, m.Ratio, m.NewAdjustedRatio, ;
-									.F., m.CurrentValue, m.NewCurrentValue, EVALUATE("m.Ctrl." + m.Property))
-						ENDIF
-					CATCH
-					ENDTRY
+					STORE ROUND(m.NewCurrentValue, 0) TO (m.CtrlProperty)
 
 					m.Adjusted = .T.
+
+					* log the adjustment
+					IF This.Logging
+						This.Log(m.Ctrl.Name, m.Ctrl.Class, m.Property, TRANSFORM(m.OriginalValue), m.Ratio, m.NewAdjustedRatio, .F., ;
+							TRANSFORM(m.CurrentValue), TRANSFORM(m.NewCurrentValue), TRANSFORM(EVALUATE(m.CtrlProperty)))
+					ENDIF
 
 				ENDIF
 			CATCH
@@ -889,41 +1087,73 @@ Define Class DPIAwareManager As Custom
 	* Adjusts the original value of a property to a new value.
 	FUNCTION AdjustFixedPropertyValue (Ctrl AS Object, Property AS String, Ratio AS Number, NewRatio AS Number, Excluded AS Number, Low AS Logical) AS Logical
 
+		LOCAL CtrlProperty AS String
 		LOCAL Adjusted AS Logical
-		LOCAL OriginalValue AS Number
-		LOCAL NewCurrentValue AS Number
+		LOCAL OriginalValue AS NumberOrString
+		LOCAL NewCurrentValue AS NumberOrString
+		LOCAL ARRAY ValuesList[1]
+		LOCAL ValueIndex AS Integer
+		LOCAL MemberValue AS Number
 
 		m.Adjusted = .F.
 
 		IF PEMSTATUS(m.Ctrl, "DPIAware_" + m.Property, 5)
 			TRY
+
 				* fixed properties are scaled from the original value
 				* unless they are excluded for being automatic or unset
 				m.OriginalValue = EVALUATE("m.Ctrl.DPIAware_" + m.Property)
 				IF PCOUNT() < 5 OR ISNULL(m.Excluded) OR m.Excluded != m.OriginalValue
 
-					* calculate the new value
-					m.NewCurrentValue = m.OriginalValue * m.NewRatio
+					* the destination of the new value
+					m.CtrlProperty = "m.Ctrl." + m.Property
 
-					* store the final (rounded) value
-					IF !m.Low
-						STORE ROUND(m.NewCurrentValue, 0) TO ("m.Ctrl." + m.Property)
+					* for most cases, properties are numeric
+					IF VARTYPE(m.OriginalValue) == "N"
+
+						* calculate the new value
+						m.NewCurrentValue = m.OriginalValue * m.NewRatio
+
+						* store the final (rounded or truncated) value
+						IF !m.Low
+							STORE ROUND(m.NewCurrentValue, 0) TO (m.CtrlProperty)
+						ELSE
+							STORE FLOOR(m.NewCurrentValue) TO (m.CtrlProperty)
+						ENDIF
+
+					* string properties consist in a comma-separated list of numbers
 					ELSE
-						STORE FLOOR(m.NewCurrentValue) TO ("m.Ctrl." + m.Property)
+
+						* prepare to rebuild the list
+						m.NewCurrentValue = ""
+
+						* adjust every member of the list
+						FOR m.ValueIndex = 1 TO ALINES(m.ValuesList, m.OriginalValue, 0, ",")
+
+							m.MemberValue = VAL(m.ValuesList[m.ValueIndex]) * m.NewRatio
+
+							IF m.Low
+								m.NewCurrentValue = m.NewCurrentValue + LTRIM(STR(FLOOR(m.MemberValue))) + ","
+							ELSE
+								m.NewCurrentValue = m.NewCurrentValue + LTRIM(STR(ROUND(m.MemberValue, 0))) + ","
+							ENDIF
+
+						ENDFOR
+
+						* store the list with new values
+						m.NewCurrentValue = RTRIM(m.NewCurrentValue, 0, ",")
+						STORE m.NewCurrentValue TO (m.CtrlProperty)
+
 					ENDIF
 
-					* log the adjustment
-					TRY
-						IF USED("DPIAwareManagerLog")
-							INSERT INTO DPIAwareManagerLog (ControlName, ClassName, Property, Original, Ratio, NewRatio, ;
-									FixedProperty, ScaledBefore, Calculated, Stored) ;
-								VALUES (m.Ctrl.Name, m.Ctrl.Class, m.Property, m.OriginalValue, m.Ratio, m.NewRatio, ;
-									.T., m.OriginalValue, m.NewCurrentValue, EVALUATE("m.Ctrl." + m.Property))
-						ENDIF
-					CATCH
-					ENDTRY
-
 					m.Adjusted = .T.
+
+					* log the adjustment
+					IF This.Logging
+						This.Log(m.Ctrl.Name, m.Ctrl.Class, m.Property, TRANSFORM(m.OriginalValue), m.Ratio, m.NewAdjustedRatio, .F., ;
+							TRANSFORM(m.CurrentValue), TRANSFORM(m.NewCurrentValue), TRANSFORM(EVALUATE(m.CtrlProperty)))
+					ENDIF
+
 				ENDIF
 			CATCH
 			ENDTRY
@@ -933,58 +1163,153 @@ Define Class DPIAwareManager As Custom
 
 	ENDFUNC
 
+	* AdjustFontNameAlternative
+	* Adjusts the name of a font by using the appropriate alternative
+	FUNCTION AdjustFontNameAlternative (Ctrl AS Object)
+
+		LOCAL AlternativeFontName AS String
+		LOCAL FontNameKey AS String
+		LOCAL FontIndex AS Integer
+
+		IF PEMSTATUS(m.Ctrl, "DPIAware_FontName", 5)
+			m.FontNameKey = UPPER(m.Ctrl.DPIAware_FontName)
+			m.FontIndex = 0
+			* use the original font name to locate the current alternative
+			* try to locate the best alternative for the font style
+			TRY
+				IF m.Ctrl.FontBold AND m.Ctrl.FontItalic
+					m.FontIndex = This.AlternativeFontNames.GetKey(m.FontNameKey + ",BI")
+				ENDIF
+				IF m.FontIndex == 0 AND m.Ctrl.FontBold
+					m.FontIndex = This.AlternativeFontNames.GetKey(m.FontNameKey + ",B")
+				ENDIF
+				IF m.FontIndex == 0 AND m.Ctrl.FontItalic
+					m.FontIndex = This.AlternativeFontNames.GetKey(m.FontNameKey + ",I")
+				ENDIF
+				IF m.FontIndex == 0 AND !m.Ctrl.FontBold AND !m.Ctrl.FontItalic
+					m.FontIndex = This.AlternativeFontNames.GetKey(m.FontNameKey + ",N")
+				ENDIF
+			CATCH
+			ENDTRY
+			* try an unstyled alternative, if a styled one was not found
+			m.FontIndex = EVL(m.FontIndex, This.AlternativeFontNames.GetKey(m.FontNameKey))
+			* if it exists
+			IF m.FontIndex != 0
+				TRY
+					* set it, if needed
+					m.AlternativeFontName = This.AlternativeFontNames.Item(m.FontIndex).AlternativeFontName
+					IF ! m.Ctrl.FontName == m.AlternativeFontName
+						m.Ctrl.FontName = m.AlternativeFontName
+					ENDIF
+				CATCH
+				ENDTRY
+			ENDIF
+		ENDIF
+
+	ENDFUNC
+		
 	* AdjustGraphicAlternatives
 	* Adjusts the value of graphic properties by selecting an appropriate alternative.
 	FUNCTION AdjustGraphicAlternatives (Ctrl AS Object, NewDPIScale AS Number)
 
-		IF PEMSTATUS(m.Ctrl, "DPIAlternative_Picture", 5)
-			This.FindGraphicAlternative(m.Ctrl, "Picture", m.Ctrl.DPIAlternative_Picture, m.NewDPIScale)
-		ENDIF
-
-		IF PEMSTATUS(m.Ctrl, "DPIAlternative_PictureVal", 5)
-			This.FindGraphicAlternative(m.Ctrl, "PictureVal", m.Ctrl.DPIAlternative_PictureVal, m.NewDPIScale)
-		ENDIF
-
-		IF PEMSTATUS(m.Ctrl, "DPIAlternative_Icon", 5)
-			This.FindGraphicAlternative(m.Ctrl, "Icon", m.Ctrl.DPIAlternative_Icon, m.NewDPIScale)
-		ENDIF
+		This.FindGraphicAlternative(m.Ctrl, "Picture", m.NewDPIScale)
+		This.FindGraphicAlternative(m.Ctrl, "PictureVal", m.NewDPIScale)
+		This.FindGraphicAlternative(m.Ctrl, "Icon", m.NewDPIScale)
+		This.FindGraphicAlternative(m.Ctrl, "MouseIcon", m.NewDPIScale)
+		This.FindGraphicAlternative(m.Ctrl, "DragIcon", m.NewDPIScale)
+		This.FindGraphicAlternative(m.Ctrl, "DisabledPicture", m.NewDPIScale)
+		This.FindGraphicAlternative(m.Ctrl, "DownPicture", m.NewDPIScale)
 
 	ENDFUNC
 
 	* FindGraphicAlternative
-	* Finds a best alternate graphic for the new scale.
-	FUNCTION FindGraphicAlternative (Ctrl AS Object, Property AS String, Alternatives AS String, DPIScale AS Number)
+	* Finds a best alternative graphic for the new scale.
+	FUNCTION FindGraphicAlternative (Ctrl AS Object, Property AS String, DPIScale AS Number)
 
+		LOCAL CtrlProperty AS String
+		LOCAL Alternatives AS String
 		LOCAL ARRAY AlternativeScales[1]
 		LOCAL AlternativesIndex AS Integer
 		LOCAL BestAlternative AS String
 		LOCAL BestDifference AS Integer, Difference AS Integer
 
+		* if there isn't an alternative list, quit looking into it
+		m.Alternatives = "DPIAlternative_" + m.Property
+		IF !PEMSTATUS(m.Ctrl, m.Alternatives, 5)
+			RETURN
+		ENDIF
+
+		m.CtrlProperty = "m.Ctrl." + m.Property
 		BestDifference = -1
 		BestAlternative = ""
 
 		* go through the list of scales for which there is an alternative
-		FOR m.AlternativesIndex = 1 TO ALINES(m.AlternativeScales, m.Alternatives, 0, ",")
+		FOR m.AlternativesIndex = 1 TO ALINES(m.AlternativeScales, EVALUATE("m.Ctrl." + m.Alternatives), 0, ",")
 
 			* calculate the difference for the new scale
 			m.Difference = VAL(m.AlternativeScales[m.AlternativesIndex]) - m.DPIScale
 
 			* there is a match! get the value in the alternate graphic property and stop searching
 			IF m.Difference = 0
-				m.BestAlternative = EVALUATE("m.Ctrl." + m.Property + m.AlternativeScales[m.AlternativesIndex])
+				m.BestAlternative = EVALUATE(m.CtrlProperty + m.AlternativeScales[m.AlternativesIndex])
 				EXIT
 			ENDIF
 
 			* but if not and this one was the best yet, use it and continue looking
 			IF m.Difference > 0 AND (m.BestDifference < 0 OR m.Difference < m.BestDifference)
-				m.BestAlternative = EVALUATE("m.Ctrl." + m.Property + m.AlternativeScales[m.AlternativesIndex])
+				m.BestAlternative = EVALUATE(m.CtrlProperty + m.AlternativeScales[m.AlternativesIndex])
 				m.BestDifference = m.Difference
 			ENDIF
 		ENDFOR
 
 		* if we found an alternative, that will be the new value for the property
 		IF !EMPTY(m.BestAlternative)
-			STORE m.BestAlternative TO ("m.Ctrl." + m.Property)
+			STORE m.BestAlternative TO (m.CtrlProperty)
+		ENDIF
+
+	ENDFUNC
+
+	* ResetIcon
+	* Reset the icon for (hopefully) better quality
+	FUNCTION ResetIcon (Ctrl AS Object)
+
+		LOCAL SafetyStatus AS String
+		LOCAL IconFile AS String
+		LOCAL hIcon AS Integer
+
+		* only for Forms
+		IF !m.Ctrl.BaseClass == "Form" OR EMPTY(m.Ctrl.Icon)
+			RETURN
+		ENDIF
+			
+		m.SafetyStatus = SET("Safety")
+		SET SAFETY OFF
+
+		* use a temporary file to make sure Windows sees the icon
+		m.IconFile = ADDBS(SYS(2023)) + "~dpiawm" + SYS(3) + ".ico"
+		TRY
+			STRTOFILE(FILETOSTR(m.Ctrl.Icon), m.IconFile)
+		CATCH
+			m.IconFile = ""
+		ENDTRY
+
+		IF m.SafetyStatus == "ON"
+			SET SAFETY ON
+		ENDIF
+
+		IF !EMPTY(m.IconFile)
+			* success in creating the file? get the icon from the temporary file and reset it
+			m.hIcon = dpiaw_ExtractIcon(0, m.IconFile, 0)
+			dpiaw_SendMessage(m.Ctrl.hWnd, WM_SETICON, ICON_SMALL, m.hIcon)
+			* use it also for the "big" version of top level forms
+			IF m.Ctrl == _Screen OR m.Ctrl.ShowWindow == 2
+				dpiaw_SendMessage(m.Ctrl.hWnd, WM_SETICON, ICON_BIG, m.hIcon)
+			ENDIF
+			* clean up
+			TRY
+				ERASE (m.IconFile)
+			CATCH
+			ENDTRY
 		ENDIF
 
 	ENDFUNC
@@ -1018,7 +1343,7 @@ Define Class DPIAwareManager As Custom
 			m.ThisObject = m.ThisObject.Parent
 		ENDDO
 
-		RETURN IIF(m.ThisObject.BaseClass == "Form", m.ThisObject, .NULL)
+		RETURN IIF(m.ThisObject.BaseClass == "Form", m.ThisObject, .NULL.)
 			
 	ENDFUNC
 
@@ -1034,16 +1359,11 @@ Define Class DPIAwareManager As Custom
 	ENDFUNC
 
 	* Log
-	* Starts a logger
-	FUNCTION Log ()
-
-		CREATE CURSOR DPIAwareManagerLog ;
-			(PK Int AutoInc, ;
-				ControlName Varchar(60), ClassName Varchar(60), Property Varchar(32), ;
-				Original Double, ;
-				Ratio Double, NewRatio Double, ;
-				FixedProperty Logical, ;
-				ScaledBefore Double, Calculated Double, Stored Double)
+	* Logs a scale operation
+	FUNCTION Log (ControlName AS String, ClassName AS String, Property AS String, ;
+				Original AS String, Ratio AS Double, NewRatio AS Double, ;
+				FixedProperty AS Logical, ;
+				ScaledBefore AS String, Calculated AS String, Stored AS String)
 
 	ENDFUNC
 
@@ -1071,7 +1391,77 @@ Define Class DPIAwareManager As Custom
 
 	ENDFUNC
 
+	* GetUnscaledValue
+	* Unscale a value, given a scale
+	FUNCTION GetUnscaledValue (Scaled AS Number, Scale AS Integer) AS Number
+
+		RETURN m.Scaled / This.GetXYRatio(m.Scale)
+
+	ENDFUNC
+
 ENDDEFINE
+
+* DPIAwareAlternativeFont
+* A class to register alternative fonts depending on the scale
+DEFINE CLASS DPIAwareAlternativeFont AS Custom
+
+	AlternativeCount = 0
+	DIMENSION Scales [1]
+	DIMENSION FontNames [1]
+
+	AlternativeFontName = ""
+
+	FUNCTION Init (BaseFontName AS String)
+
+		This.AlternativeCount = 1
+		This.Scales[1] = 100
+		* discard the style clause to set the base font name
+		This.FontNames[1] = LEFT(m.BaseFontName, EVL(RAT(",", m.BaseFontName), LEN(m.BaseFontName) + 1) - 1)
+
+	ENDFUNC
+
+	FUNCTION AddAlternative (Scale AS Integer, AlternativeFontName AS String)
+
+		This.AlternativeCount = This.AlternativeCount + 1
+		DIMENSION This.Scales[This.AlternativeCount]
+		DIMENSION This.FontNames[This.AlternativeCount]
+		This.Scales[This.AlternativeCount] = m.Scale
+		This.FontNames[This.AlternativeCount] = m.AlternativeFontName
+
+	ENDFUNC
+
+	FUNCTION FindAlternative (DPIScale AS Integer)
+
+		LOCAL AltIndex AS Integer
+		LOCAL BestAlternative AS Integer
+		LOCAL Difference AS Integer
+		LOCAL BestDifference AS Integer
+
+		m.BestAlternative = 1
+		m.BestDifference = -1
+
+		FOR m.AltIndex = 1 TO This.AlternativeCount
+			m.Difference = m.DPIScale - This.Scales[m.AltIndex]
+			IF m.Difference == 0
+				m.BestAlternative = m.AltIndex
+				EXIT
+			ENDIF
+			IF m.Difference > 0
+				IF m.BestDifference == -1 OR m.Difference < m.BestDifference
+					m.BestDifference = m.Difference
+					m.BestAlternative = m.AltIndex
+				ENDIF
+			ENDIF
+		ENDFOR
+
+		This.AlternativeFontName = This.FontNames[m.BestAlternative]
+
+		RETURN This.AlternativeFontName
+
+	ENDFUNC
+
+ENDDEFINE
+			
 
 * DPIAwareScreenManager
 * An extension manager for the _Screen object.
@@ -1085,25 +1475,8 @@ DEFINE CLASS DPIAwareScreenManager AS Custom
 		RETURN .F.
 	ENDFUNC
 
-ENDDEFINE
-
-* a template for DPI-aware classes
-DEFINE CLASS DPIAware_Optiongroup AS OptionGroup
-
-	DPIAware = .NULL.
-
-	FUNCTION Visible_Assign (Visibility AS Logical)
-
-		This.Visible = m.Visibility
-		IF m.Visibility AND ISNULL(This.DPIAware)
-			IF TYPE("Thisform") == "O" AND PEMSTATUS(Thisform, "DPIAware", 5) AND Thisform.DPIAware
-				This.DPIAware = .T.
-				Thisform.DPIAwareManager.AddControl(This)
-			ELSE
-				This.DPIAware = .F.
-			ENDIF
-		ENDIF
-
+	FUNCTION DPIAwareSaveOriginalInfo (Ctrl AS Object)
+		RETURN .T.
 	ENDFUNC
 
 ENDDEFINE
