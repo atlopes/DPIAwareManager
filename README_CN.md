@@ -1,9 +1,7 @@
-_翻译：xinjie   2021.08.03_
-
-_译者注：最新版本的请参考 [atlopes/DPIAwareManager](https://github.com/atlopes/DPIAwareManager)_
-
 # DPIAwareManager
 [English](README.md)|[简体中文](README_CN.md)
+
+_翻译：xinjie   2021.08.03_
 
 一个用于 VFP 应用的 DPI 感知管理器类
 
