@@ -302,8 +302,7 @@ Define Class DPIAwareManager As Custom
 		This.SetMonitorInfo(m.DPIAwareForm)
 
 		* proceed to the actual method that performs the rescaling (the new DPI scale is passed as a percentage)
-		RETURN This.ChangeFormDPIScale(m.DPIAwareForm, BITAND(m.wParam, 0x07FFF) / DPI_STANDARD * DPI_STANDARD_SCALE)
-
+		RETURN This.ChangeFormDPIScale(m.DPIAwareForm, MIN(MAX(BITAND(m.wParam, 0x07FFF) / DPI_STANDARD * DPI_STANDARD_SCALE, DPI_STANDARD_SCALE), DPI_MAX_SCALE))
 	ENDFUNC
 
 	* CheckDPIScaleChange
