@@ -517,6 +517,7 @@ Define Class DPIAwareManager As Custom
 		This.SaveOriginalProperty(m.Ctrl, "MaxWidth")
 		This.SaveOriginalProperty(m.Ctrl, "MinHeight")
 		This.SaveOriginalProperty(m.Ctrl, "MinWidth")
+		This.SaveOriginalProperty(m.Ctrl, "Partition")
 		This.SaveOriginalProperty(m.Ctrl, "PictureMargin")
 		This.SaveOriginalProperty(m.Ctrl, "PictureSpacing")
 		This.SaveOriginalProperty(m.Ctrl, "RowHeight")
@@ -555,7 +556,7 @@ Define Class DPIAwareManager As Custom
 				* the _Screen manages the control
 				CASE m.Ctrl.DPIAwareSelfControl == 3
 
-					_Screen.DPIAwareScrenManager.DPIAwareSaveOriginalInfo(m.Ctrl)
+					_Screen.DPIAwareScreenManager.DPIAwareSaveOriginalInfo(m.Ctrl)
 
 				ENDCASE
 			CATCH				&& ignore any errors, the method may not have been implemented
@@ -841,7 +842,7 @@ Define Class DPIAwareManager As Custom
 			* the scale process is made by the _Screen
 			CASE m.Ctrl.DPIAwareSelfControl = 3
 
-				RETURN _Screen.DPIAwareScrenManager.DPIAwareControlsManager(m.DPIScale, m.DPINewScale, m.Ctrl)
+				RETURN _Screen.DPIAwareScreenManager.DPIAwareControlsManager(m.DPIScale, m.DPINewScale, m.Ctrl)
 
 			ENDCASE
 
@@ -983,6 +984,7 @@ Define Class DPIAwareManager As Custom
 			This.AdjustPropertyValue(m.Ctrl, "RowHeight", m.XYRatio, m.NewXYRatio, -1)
 			This.AdjustPropertyValue(m.Ctrl, "HeaderHeight", m.XYRatio, m.NewXYRatio, -1)
 			* other properties
+			This.AdjustFixedPropertyValue(m.Ctrl, "Partition", m.XYRatio, m.NewXYRatio, 0)
 			This.AdjustFixedPropertyValue(m.Ctrl, "GridLineWidth", m.XYRatio, m.NewXYRatio)
 		ENDIF
 
