@@ -1,4 +1,5 @@
 # DPIAwareManager
+[English](README.md)|[简体中文](README_CN.md)
 
 A DPI-aware manager class for VFP applications.
 
