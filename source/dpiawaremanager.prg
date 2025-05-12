@@ -42,6 +42,10 @@ Define Class DPIAwareManager As Custom
 	HIDDEN SystemInfoFunction
 	SystemInfoFunction = 0
 
+	* available displays
+	ADD OBJECT Displays AS Collection
+	ExtendedDisplaysOnly = .T.
+
 	FUNCTION Init
 
 		DECLARE LONG GetWindowDC IN WIN32API AS dpiaw_GetWindowDC ;
@@ -52,8 +56,15 @@ Define Class DPIAwareManager As Custom
 			LONG hDC, INTEGER CapIndex
 		DECLARE LONG MonitorFromWindow IN WIN32API AS dpiaw_MonitorFromWindow ;
 			LONG hWnd, INTEGER Flags
+		DECLARE LONG MonitorFromPoint IN WIN32API AS dpiaw_MonitorFromPoint ;
+			LONG X, LONG Y, INTEGER Flags
 		DECLARE INTEGER GetMonitorInfo IN WIN32API AS dpiaw_GetMonitorInfo ;
 			LONG hMonitor, STRING @ MonitorInfo
+		DECLARE INTEGER EnumDisplaySettings IN WIN32API AS dpiaw_EnumDisplaySettings ;
+			STRING lpszDeviceName, INTEGER iModeNum, STRING @lpDevMode
+		DECLARE INTEGER EnumDisplayDevices IN WIN32API AS dpiaw_EnumDisplayDevices ;
+			STRING lpDevice, INTEGER iDevNum, ;
+			STRING @lpDisplayDevice, INTEGER dwFlags
 		DECLARE INTEGER ExtractIcon IN shell32 AS dpiaw_ExtractIcon ;
 			INTEGER hInst, STRING FileName, INTEGER IndexIcon
 		DECLARE INTEGER SendMessage IN user32 AS dpiaw_SendMessage ;
@@ -90,6 +101,8 @@ Define Class DPIAwareManager As Custom
 			ENDTRY
 		CATCH
 		ENDTRY
+
+		This.GetDisplaysInfo()
 
 	ENDFUNC
 
@@ -188,7 +201,7 @@ Define Class DPIAwareManager As Custom
 	* Returns the DPI scale of a monitor that a form is using.
 	* The scale is a percentage (100%, 125%, ...).
 	FUNCTION GetMonitorDPIScale (DPIAwareForm AS Form) AS Integer
-	LOCAL dpiX AS Integer, dpiY AS Integer
+	LOCAL dpiX AS Integer
 	LOCAL hDC AS Integer
 
 		* use the best available function to get the information
@@ -197,8 +210,8 @@ Define Class DPIAwareManager As Custom
 			CASE This.SystemInfoFunction = 2
 				m.dpiX = dpiaw_GetDpiForWindow(m.DPIAwareForm.HWnd)
 			CASE This.SystemInfoFunction = 1		&& not for Per-Monitor aware (AwarenessType = 2)
-				STORE 0 TO m.dpiX, m.dpiY
-				dpiaw_GetDpiForMonitor(m.DPIAwareForm.hMonitor, 0, @m.dpiX, @m.dpiY)
+				m.dpiX = 0
+				dpiaw_GetDpiForMonitor(m.DPIAwareForm.hMonitor, 0, @m.dpiX, @m.dpiX)
 			OTHERWISE
 				m.hDC = dpiaw_GetWindowDC(m.DPIAwareForm.HWnd)
 				m.dpiX = dpiaw_GetDeviceCaps(m.hDC, DC_LOGPIXELSX)
@@ -243,8 +256,120 @@ Define Class DPIAwareManager As Custom
 
 	ENDFUNC
 
+	* GetDisplaysInfo
+	* Fetchs information on (active) displays and returns its number
+	FUNCTION GetDisplaysInfo () AS Integer
+
+		* refresh the collection of displays
+		This.Displays.Remove(-1)
+
+#DEFINE DISPLAY_DEVICE_ACTIVE					1
+#DEFINE DISPLAY_DEVICE_PRIMARY_DEVICE		4
+#DEFINE DISPLAY_DEVICE_MIRRORING_DRIVER	8
+
+#DEFINE ENUM_CURRENT_SETTINGS					-1
+
+#DEFINE MONITOR_DEFAULTTONEAREST				2
+
+#DEFINE SIZEOF_DISPLAYDEVICE					424
+#DEFINE SIZEOF_MONITORINFOEX					72
+
+		LOCAL CStruct AS String
+		LOCAL StateFlags AS Integer
+		LOCAL MIndex AS Integer
+		LOCAL MInfo AS Empty
+		LOCAL VFPMonitor AS Integer
+		LOCAL dpiX AS Integer
+
+		* get VFP's monitor handle, for later
+		m.VFPMonitor = dpiaw_MonitorFromWindow(_vfp.hWnd, MONITOR_DEFAULTTONEAREST)
+
+		m.MIndex = 0
+
+		* go through all available displays
+		DO WHILE .T.
+
+			m.CStruct = BINTOC(SIZEOF_DISPLAYDEVICE, "4RS") + REPLICATE(0h00, SIZEOF_DISPLAYDEVICE - 4)
+
+			* this marks the end of the list, no more monitors
+			IF dpiaw_EnumDisplayDevices(.NULL., m.MIndex, @m.CStruct, 0) == 0
+				EXIT
+			ENDIF
+
+			m.StateFlags = CTOBIN(SUBSTR(m.CStruct, 165, 2), "2RS")
+			* ignore inactive or mirrored displays? continue going through all monitors 
+			IF This.ExtendedDisplaysOnly AND (!BITTEST(m.StateFlags, 0) OR BITTEST(m.StateFlags, 3))
+				m.MIndex = m.MIndex + 1
+				LOOP
+			ENDIF
+
+			* prepare an object to hold the information
+			m.MInfo = CREATEOBJECT("Empty")
+
+			ADDPROPERTY(m.MInfo, "DeviceIndex", m.MIndex)
+
+			ADDPROPERTY(m.MInfo, "DeviceName", GETWORDNUM(SUBSTR(m.CStruct, 5, 32) + 0h00, 1, 0h00))
+			ADDPROPERTY(m.MInfo, "DeviceString", GETWORDNUM(SUBSTR(m.CStruct, 37, 128) + 0h00, 1, 0h00))
+			ADDPROPERTY(m.MInfo, "DeviceKey", GETWORDNUM(SUBSTR(m.CStruct, 297, 128) + 0h00, 1, 0h00))
+			ADDPROPERTY(m.MInfo, "PrimaryDevice", BITTEST(m.StateFlags, 2))
+			ADDPROPERTY(m.MInfo, "ActiveDevice", BITTEST(m.StateFlags, 0))
+			ADDPROPERTY(m.MInfo, "StateFlags", m.StateFlags)
+
+			* fetch the monitor name now that a device name is found
+			m.CStruct = BINTOC(SIZEOF_DISPLAYDEVICE, "4RS") + REPLICATE(0h00, SIZEOF_DISPLAYDEVICE- 4)
+
+			dpiaw_EnumDisplayDevices(m.MInfo.DeviceName, 0, @m.CStruct, 0)
+
+			ADDPROPERTY(m.MInfo, "MonitorName", GETWORDNUM(SUBSTR(m.CStruct, 37, 128) + 0h00, 1, 0h00))
+
+			* fetch the settings for the monitor
+			m.CStruct = REPLICATE(CHR(0), 1024)
+
+			dpiaw_EnumDisplaySettings(m.MInfo.DeviceName, ENUM_CURRENT_SETTINGS, @m.CStruct)
+
+			ADDPROPERTY(m.MInfo, "Left", CTOBIN(SUBSTR(m.CStruct, 45, 4), "4RS"))
+			ADDPROPERTY(m.MInfo, "Top", CTOBIN(SUBSTR(m.CStruct, 49, 4), "4RS"))
+			ADDPROPERTY(m.MInfo, "Width", CTOBIN(SUBSTR(m.CStruct, 109, 4), "4RS"))
+			ADDPROPERTY(m.MInfo, "Height", CTOBIN(SUBSTR(m.CStruct, 113, 4), "4RS"))
+			ADDPROPERTY(m.MInfo, "BitsPerPixel", CTOBIN(SUBSTR(m.CStruct, 105, 4), "4RS"))
+			ADDPROPERTY(m.MInfo, "Orientation", CTOBIN(SUBSTR(m.CStruct, 53, 4), "4RS"))
+			ADDPROPERTY(m.MInfo, "FixedOutput", CTOBIN(SUBSTR(m.CStruct, 57, 4), "4RS"))
+			ADDPROPERTY(m.MInfo, "Flags", CTOBIN(SUBSTR(m.CStruct, 117, 4), "4RS"))
+			ADDPROPERTY(m.MInfo, "Frequency", CTOBIN(SUBSTR(m.CStruct, 121, 4), "4RS"))
+
+			* we have the top left coordinates, get the monitor handle
+			ADDPROPERTY(m.MInfo, "hMonitor", dpiaw_MonitorFromPoint(m.MInfo.Left, m.MInfo.Top, MONITOR_DEFAULTTONEAREST))
+
+			ADDPROPERTY(m.MInfo, "_ScreenHost", m.MInfo.hMonitor == m.VFPMonitor)
+
+			* and try to get its DPI setting
+			TRY
+				m.dpiX = DPI_STANDARD
+				dpiaw_GetDpiForMonitor(m.MInfo.hMonitor, 0, @m.dpiX, @m.dpiX)
+			CATCH
+				m.dpiX = 0
+			ENDTRY
+
+			* store it and calculate the logical width and height
+			ADDPROPERTY(m.MInfo, "DPI", m.dpiX)
+			ADDPROPERTY(m.MInfo, "DPIScale", INT(m.dpiX * DPI_STANDARD_SCALE / DPI_STANDARD))
+			ADDPROPERTY(m.MInfo, "DPIAware_Width", FLOOR(m.MInfo.Width * DPI_STANDARD / EVL(m.dpiX, DPI_STANDARD)))
+			ADDPROPERTY(m.MInfo, "DPIAware_Height", FLOOR(m.MInfo.Height * DPI_STANDARD / EVL(m.dpiX, DPI_STANDARD)))
+
+			* add to the collection of displays
+			This.Displays.Add(m.MInfo)
+
+			m.MIndex = m.MIndex + 1
+
+		ENDDO
+
+		* >= 1, or something really wrong happened...
+		RETURN This.Displays.Count
+
+	ENDFUNC
+
 	* SetMonitorInfo
-	* Sets positional, dimensional, and DPI inforation of current monitor
+	* Sets positional, dimensional, and DPI information of current monitor
 	FUNCTION SetMonitorInfo (DPIAwareForm AS Form, Source AS Form) 
 
 		IF PCOUNT() == 1

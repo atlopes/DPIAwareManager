@@ -47,7 +47,7 @@ BROWSE NOWAIT LAST
 * incorporate additional testing in forms and unmanagedforms folders
 SET PATH TO forms;unmanagedforms ADDITIVE
 
-LOCAL ARRAY ManagedForms[1], UnmanagedForms[1]
+LOCAL ARRAY ManagedForms[2], UnmanagedForms[1]
 
 * a basic form with info - shown in screen
 DO FORM "monitor dpi in screen.scx" NAME m.ManagedForms[1] LINKED NOSHOW
@@ -56,11 +56,21 @@ DO FORM "monitor dpi in screen.scx" NAME m.ManagedForms[1] LINKED NOSHOW
 m.DPI.Manage(m.ManagedForms[1])
 m.ManagedForms[1].Show()
 
+* other form to hold information about available displays - shown as top level form
+DO FORM "information on displays.scx" NAME m.ManagedForms[2] LINKED NOSHOW
+
+* as above
+m.DPI.Manage(m.ManagedForms[2])
+m.ManagedForms[2].Show()
+
 ACTIVATE SCREEN
 
 LOCAL ARRAY SCX[1]
 LOCAL NumSCX AS Integer
+LOCAL Base AS Integer
 LOCAL Term AS Terminator
+
+m.Base = ALEN(m.ManagedForms)
 
 m.Term = CREATEOBJECT("Terminator")
 
@@ -68,17 +78,17 @@ m.Term = CREATEOBJECT("Terminator")
 
 FOR m.NumSCX = 1 TO ADIR(m.SCX, "forms\*.scx")
 
-	DIMENSION m.ManagedForms[m.NumSCX + 1]
+	DIMENSION m.ManagedForms[m.NumSCX + m.Base]
 
 	* instantiate the form
-	DO FORM ("forms\" + m.SCX[m.NumSCX, 1]) NAME m.ManagedForms[m.NumSCX + 1] LINKED NOSHOW
+	DO FORM ("forms\" + m.SCX[m.NumSCX, 1]) NAME m.ManagedForms[m.NumSCX + m.Base] LINKED NOSHOW
 
 	* terminate the test application whem a form is closed
-	BINDEVENT(m.ManagedForms[m.NumSCX + 1], "Destroy", m.Term, "Done")
+	BINDEVENT(m.ManagedForms[m.NumSCX + m.Base], "Destroy", m.Term, "Done")
 
 	* manage and show the form
-	m.DPI.Manage(m.ManagedForms[m.NumSCX + 1])
-	m.ManagedForms[m.NumSCX + 1].Show()
+	m.DPI.Manage(m.ManagedForms[m.NumSCX + m.Base])
+	m.ManagedForms[m.NumSCX + m.Base].Show()
 
 	ACTIVATE SCREEN
 

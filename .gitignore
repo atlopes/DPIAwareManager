@@ -1,6 +1,7 @@
 *.BAK
 *.FXP
 *.exe
+FOXUSER.*
 temp/*.*
 testing/forms/*.*
 !testing/forms/thisFolderIntentionallyLeftEmpty
