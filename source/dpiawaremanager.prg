@@ -4,7 +4,7 @@ SET PROCEDURE TO (SYS(16)) ADDITIVE
 #DEFINE WM_DPICHANGED						0x02E0
 #DEFINE WM_SETICON							0x0080
 
-#DEFINE SIZEOF_MONITORINFO					0h28000000
+#DEFINE SIZEOF_MONITORINFO					40
 
 #DEFINE DPI_STANDARD							96
 #DEFINE DPI_STANDARD_SCALE					100
@@ -114,6 +114,11 @@ Define Class DPIAwareManager As Custom
 	* Puts a form under DPI-awareness management
 	* It should be called before the form is shown
 	FUNCTION Manage (AForm AS Form, Constraints AS Integer) AS Void
+
+		* manage only forms, for now
+		IF m.AForm.BaseClass != "Form"
+			RETURN
+		ENDIF
 
 		* add DPI-aware related properties
 		This.AddDPIProperty(m.AForm, "DPIAwareManager", This)
@@ -234,7 +239,7 @@ Define Class DPIAwareManager As Custom
 		LOCAL Rect AS String
 		LOCAL MonitorInfo AS Empty
 
-		m.MonitorInfoStructure = SIZEOF_MONITORINFO + REPLICATE(CHR(0), 36)
+		m.MonitorInfoStructure = BINTOC(SIZEOF_MONITORINFO, "4RS") + REPLICATE(0h00, SIZEOF_MONITORINFO - 4)
 
 		dpiaw_GetMonitorInfo(m.hMonitor, @m.MonitorInfoStructure)
 
@@ -472,6 +477,11 @@ Define Class DPIAwareManager As Custom
 		* act only if the scale of the form has changed (the _Screen may have only moved)
 		IF m.NewDPIScale != m.DPIAwareForm.DPIScale
 
+			TRY
+				m.DPIAwareForm.DPIAware_BeforeScaling(m.DPIAwareForm.DPIScale, m.NewDPIScale)
+			CATCH
+			ENDTRY
+
 			LOCAL IsMaximized AS Logical
 
 			m.IsMaximized = (m.DPIAwareForm.WindowState == 2)
@@ -489,17 +499,23 @@ Define Class DPIAwareManager As Custom
 					_Screen.DPIAwareScreenManager.SelfManage(_Screen.DPIScale, m.NewDPIScale) 
 				ENDIF
 
-			CATCH TO m.oPS
-				* quick dirty info on error
-				MESSAGEBOX(TEXTMERGE("<<m.ops.message>> @ <<m.ops.linecontents>> / <<m.Ops.Lineno>>"))
+			CATCH TO m.Ops
+				* activate the debugger
+				SET STEP ON
 			ENDTRY
 
 			m.DPIAwareForm.LockScreen = .F.
+
 			m.DPIAwareForm.DPIScale = m.NewDPIScale
 
 			IF m.IsMaximized
 				m.DPIAwareForm.WindowState = 2
 			ENDIF
+
+			TRY
+				m.DPIAwareForm.DPIAware_AfterScaling(m.DPIAwareForm.DPIScale, m.NewDPIScale)
+			CATCH
+			ENDTRY
 
 			RETURN 0
 
@@ -639,6 +655,8 @@ Define Class DPIAwareManager As Custom
 		This.SaveOriginalProperty(m.Ctrl, "Left")
 		This.SaveOriginalProperty(m.Ctrl, "Margin")
 		This.SaveOriginalProperty(m.Ctrl, "MaxHeight")
+		This.SaveOriginalProperty(m.Ctrl, "MaxLeft")
+		This.SaveOriginalProperty(m.Ctrl, "MaxTop")
 		This.SaveOriginalProperty(m.Ctrl, "MaxWidth")
 		This.SaveOriginalProperty(m.Ctrl, "MinHeight")
 		This.SaveOriginalProperty(m.Ctrl, "MinWidth")
@@ -1083,6 +1101,10 @@ Define Class DPIAwareManager As Custom
 		m.IsGrowing = m.DPIScale < m.NewDPIScale
 
 		m.IsForm = m.Ctrl.BaseClass == "Form"
+		IF m.IsForm
+			This.AdjustFixedPropertyValue(m.Ctrl, "MaxTop", m.XYRatio, m.NewXYRatio, -1)
+			This.AdjustFixedPropertyValue(m.Ctrl, "MaxLeft", m.XYRatio, m.NewXYRatio, -1)
+		ENDIF
 
 		IF ! m.Ctrl.BaseClass == "Grid"
 			* if we are not growing, calculate the margin and border first to arrange more space for the text
