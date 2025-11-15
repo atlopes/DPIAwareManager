@@ -39,6 +39,8 @@ ON PAD padDPIAware OF _MSYSMENU ACTIVATE POPUP popDPIAware
 DEFINE BAR 1 OF popDPIAware PROMPT "DPI-aware menu bars"
 DEFINE BAR 2 OF popDPIAware PROMPT "Current scale: 100%"
 
+_Screen.DPIAwareScreenManager.SelfManage(100, m.DPI.GetMonitorDPIScale(_Screen))
+
 ACTIVATE SCREEN
 
 * attention! the browse window is not manageable

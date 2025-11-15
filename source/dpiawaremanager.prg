@@ -630,7 +630,7 @@ Define Class DPIAwareManager As Custom
 	* Saves the original value of a property by creating a DPIAware_<property name> new property.
 	FUNCTION SaveOriginalProperty (Ctrl AS Object, Property AS String)
 
-		IF PEMSTATUS(m.Ctrl, m.Property, 5) AND TYPE("m.Ctrl." + m.Property) != "U"
+		IF PEMSTATUS(m.Ctrl, m.Property, 5) AND TYPE("m.Ctrl." + m.Property) != "U" AND ! PEMSTATUS(m.Ctrl, "DPIAware_" + m.Property, 5)
 			This.AddDPIProperty(m.Ctrl, "DPIAware_" + m.Property, EVALUATE("m.Ctrl." + m.Property))
 		ENDIF
 
