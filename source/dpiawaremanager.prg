@@ -591,32 +591,39 @@ Define Class DPIAwareManager As Custom
 	FUNCTION SaveControl (Ctrl AS Object)
 
 		LOCAL SubCtrl AS Object
+		LOCAL CtrlBaseClass AS String
 
-		IF !m.Ctrl.BaseClass $ "Custom,Timer"
-			This.SaveOriginalInfo(m.Ctrl)
-		ELSE
+		TRY
+			m.CtrlBaseClass = m.Ctrl.BaseClass		&& we must have access to the control
+		CATCH
+			m.CtrlBaseClass = ""
+		ENDTRY
+
+		IF EMPTY(m.CtrlBaseClass) OR m.CtrlBaseClass $ "Custom,Timer"
 			RETURN
 		ENDIF
 
+		This.SaveOriginalInfo(m.Ctrl)
+
 		DO CASE 
 
-		CASE m.Ctrl.BaseClass == 'Container'
+		CASE m.CtrlBaseClass == 'Container'
 			This.SaveContainer(m.Ctrl)
 
-		CASE m.Ctrl.BaseClass == 'Pageframe'
+		CASE m.CtrlBaseClass == 'Pageframe'
 
 			FOR EACH SubCtrl IN m.Ctrl.Pages
 				This.SaveContainer(m.SubCtrl)
 			ENDFOR
 
-		CASE m.Ctrl.BaseClass == 'Grid'
+		CASE m.CtrlBaseClass == 'Grid'
 
 			FOR EACH SubCtrl IN m.Ctrl.Columns
 				This.SaveOriginalInfo(m.SubCtrl)
 				This.SaveContainer(m.SubCtrl)
 			ENDFOR
 
-		CASE m.Ctrl.BaseClass $ 'Commandgroup,Optiongroup'
+		CASE m.CtrlBaseClass $ 'Commandgroup,Optiongroup'
 
 			FOR EACH SubCtrl IN m.Ctrl.Buttons
 				This.SaveOriginalInfo(m.SubCtrl)
