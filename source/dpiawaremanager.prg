@@ -472,13 +472,15 @@ Define Class DPIAwareManager As Custom
 	* Change the DPI scale of a form.
 	FUNCTION ChangeFormDPIScale (DPIAwareForm AS Form, NewDPIScale AS Integer) AS Integer
 
+		LOCAL DPIScale AS Integer
 		LOCAL Ops AS Exception
 
 		* act only if the scale of the form has changed (the _Screen may have only moved)
 		IF m.NewDPIScale != m.DPIAwareForm.DPIScale
 
+			m.DPIScale = m.DPIAwareForm.DPIScale
 			TRY
-				m.DPIAwareForm.DPIAware_BeforeScaling(m.DPIAwareForm.DPIScale, m.NewDPIScale)
+				m.DPIAwareForm.DPIAware_BeforeScaling(m.DPIScale, m.NewDPIScale)
 			CATCH
 			ENDTRY
 
@@ -513,7 +515,7 @@ Define Class DPIAwareManager As Custom
 			ENDIF
 
 			TRY
-				m.DPIAwareForm.DPIAware_AfterScaling(m.DPIAwareForm.DPIScale, m.NewDPIScale)
+				m.DPIAwareForm.DPIAware_AfterScaling(m.DPIScale, m.NewDPIScale)
 			CATCH
 			ENDTRY
 
@@ -581,7 +583,9 @@ Define Class DPIAwareManager As Custom
 		This.SaveOriginalInfo(m.Ctrl)
 
 		FOR EACH m.SubCtrl In m.Ctrl.Controls
-			This.SaveControl(m.SubCtrl)
+			IF This.IsAccessible(m.SubCtrl)
+				This.SaveControl(m.SubCtrl)
+			ENDIF
 		ENDFOR
 
 	ENDFUNC
@@ -591,15 +595,8 @@ Define Class DPIAwareManager As Custom
 	FUNCTION SaveControl (Ctrl AS Object)
 
 		LOCAL SubCtrl AS Object
-		LOCAL CtrlBaseClass AS String
 
-		TRY
-			m.CtrlBaseClass = m.Ctrl.BaseClass		&& we must have access to the control
-		CATCH
-			m.CtrlBaseClass = ""
-		ENDTRY
-
-		IF EMPTY(m.CtrlBaseClass) OR m.CtrlBaseClass $ "Custom,Timer"
+		IF ! This.IsAccessible(m.Ctrl) OR m.Ctrl.BaseClass $ "Custom,Timer"
 			RETURN
 		ENDIF
 
@@ -607,26 +604,30 @@ Define Class DPIAwareManager As Custom
 
 		DO CASE 
 
-		CASE m.CtrlBaseClass == 'Container'
+		CASE m.Ctrl.BaseClass == 'Container'
 			This.SaveContainer(m.Ctrl)
 
-		CASE m.CtrlBaseClass == 'Pageframe'
+		CASE m.Ctrl.BaseClass == 'Pageframe'
 
 			FOR EACH SubCtrl IN m.Ctrl.Pages
 				This.SaveContainer(m.SubCtrl)
 			ENDFOR
 
-		CASE m.CtrlBaseClass == 'Grid'
+		CASE m.Ctrl.BaseClass == 'Grid'
 
 			FOR EACH SubCtrl IN m.Ctrl.Columns
-				This.SaveOriginalInfo(m.SubCtrl)
+				IF This.IsAccessible(m.SubCtrl)
+					This.SaveOriginalInfo(m.SubCtrl)
+				ENDIF
 				This.SaveContainer(m.SubCtrl)
 			ENDFOR
 
-		CASE m.CtrlBaseClass $ 'Commandgroup,Optiongroup'
+		CASE m.Ctrl.BaseClass $ 'Commandgroup,Optiongroup'
 
 			FOR EACH SubCtrl IN m.Ctrl.Buttons
-				This.SaveOriginalInfo(m.SubCtrl)
+				IF This.IsAccessible(m.SubCtrl)
+					This.SaveOriginalInfo(m.SubCtrl)
+				ENDIF
 			ENDFOR
 
 		ENDCASE
@@ -1010,7 +1011,9 @@ Define Class DPIAwareManager As Custom
 		LOCAL SubCtrl AS Object
 
 		FOR EACH m.SubCtrl IN m.Cntr.Controls
-			This.SetAnchorControl(m.SubCtrl, m.Unset)
+			IF This.IsAccessible(m.SubCtrl)
+				This.SetAnchorControl(m.SubCtrl, m.Unset)
+			ENDIF
 		ENDFOR
 
 	ENDFUNC
@@ -1020,6 +1023,10 @@ Define Class DPIAwareManager As Custom
 	FUNCTION SetAnchorControl (Ctrl AS Object, Unset AS Logical)
 
 		LOCAL SubCtrl AS Object
+
+		IF ! This.IsAccessible(m.Ctrl)					&& make sure we have access to the control
+			RETURN
+		ENDIF
 
 		TRY
 			m.Ctrl.Anchor = IIF(m.Unset, 0, m.Ctrl.DPIAWare_Anchor)
@@ -1513,6 +1520,22 @@ Define Class DPIAwareManager As Custom
 
 	ENDFUNC
 
+	* IsAccessible
+	* Returns true when the control is accessible
+	FUNCTION IsAccessible (Ctrl AS Object) AS Logical
+
+		LOCAL Accessible AS Logical
+
+		TRY
+			m.Accessible = ! EMPTY(m.Ctrl.BaseClass)
+		CATCH
+			m.Accessible = .F.
+		ENDTRY
+
+		RETURN m.Accessible
+
+	ENDFUNC
+
 	* Log
 	* Logs a scale operation
 	FUNCTION Log (ControlName AS String, ClassName AS String, Property AS String, ;
@@ -1527,6 +1550,14 @@ Define Class DPIAwareManager As Custom
 	FUNCTION GetXYRatio (Scale AS Integer) AS Number
 
 		RETURN m.Scale / DPI_STANDARD_SCALE
+
+	ENDFUNC
+
+	* GetXYChangeRatio
+	* Gets a ratio multiplier, given a change in the scale
+	FUNCTION GetXYChangeRatio (CurrentScale AS Integer, NewScale AS Integer) AS Number
+
+		RETURN m.NewScale / m.CurrentScale
 
 	ENDFUNC
 
