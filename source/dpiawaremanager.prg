@@ -775,7 +775,7 @@ Define Class DPIAwareManager As Custom
 
 	* Scale
 	* Scale a container from one scale to another.
-	FUNCTION Scale (Ctnr AS Object, DPIScale AS Number, DPINewScale AS Number, SkipPreAdjust AS Logical)
+	FUNCTION Scale (Ctnr AS Object, DPIScale AS Number, DPINewScale AS Number, SkipPreAdjust AS Logical, ExtraWidthRatio AS Number)
 
 		LOCAL IsForm AS Logical
 		LOCAL SubCtrl AS Object
@@ -794,6 +794,7 @@ Define Class DPIAwareManager As Custom
 		m.IsForm = m.Ctnr.BaseClass == 'Form'
 		IF m.IsForm
 			m.Ctnr.DPIScaling = .T.
+			* all anchors in a form are set to zero, so that the scale won't trigger the resizing and repositioning of contained controls
 			This.SetAnchor(m.Ctnr, .T.)
 		ENDIF
 
@@ -822,14 +823,15 @@ Define Class DPIAwareManager As Custom
 			RETURN
 		ENDIF
 
-		* all anchors in a form are set to zero, so that the scale won't trigger the resizing and repositioning of contained controls
 		IF m.IsForm
-
 			m.Ctnr.LockScreen = .T.
+		ENDIF
 
-			* perform the actual resizing of the form
+		* perform the actual resizing of the container
+		IF PCOUNT() < 5
 			This.AdjustSize(m.Ctnr, m.DPIScale, m.DPINewScale)
-
+		ELSE
+			This.AdjustSize(m.Ctnr, m.DPIScale, m.DPINewScale, m.ExtraWidthRatio)
 		ENDIF
 
 		* do the resizing for all contained controls
@@ -858,7 +860,7 @@ Define Class DPIAwareManager As Custom
 		* If the control is not DPI aware or if it is fully self-controlled, don't touch it
 		TRY
 			m.Scalable = NVL(m.Ctrl.DPIAware, .F.)
-			IF m.Scalable
+			IF m.Scalable AND ! m.Ctrl.BaseClass $ "Container,Page,Column"
 				m.Scalable = This.SelfScaleControl(m.Ctrl, m.DPIScale, m.DPINewScale)
 			ENDIF
 		CATCH
@@ -878,7 +880,7 @@ Define Class DPIAwareManager As Custom
 			m.AutoSizeCtrl = .F.
 		ENDIF
 
-		IF !m.Ctrl.BaseClass $ 'Custom,Timer'
+		IF ! m.Ctrl.BaseClass $ "Container,Page,Column,Custom,Timer"
 			This.AdjustSize(m.Ctrl, m.DPIScale, m.DPINewScale)
 		ENDIF
 
@@ -904,7 +906,6 @@ Define Class DPIAwareManager As Custom
 			ENDWITH
 
 			FOR EACH m.SubCtrl AS Page IN m.Ctrl.Pages
-				This.AdjustSize(m.SubCtrl, m.DPIScale, m.DPINewScale)
 				This.Scale(m.SubCtrl, m.DPIScale, m.DPINewScale)
 			ENDFOR
 
@@ -947,14 +948,13 @@ Define Class DPIAwareManager As Custom
 
 			FOR EACH m.SubCtrl AS Column IN m.Ctrl.Columns
 				* the column will have extra plus or minus space, since some components of the grid width do not scale
-				This.AdjustSize(m.SubCtrl, m.DPIScale, m.DPINewScale, m.FixedWeight)
-				This.Scale(m.SubCtrl, m.DPIScale, m.DPINewScale)
+				This.Scale(m.SubCtrl, m.DPIScale, m.DPINewScale, .F., m.FixedWeight)
 			ENDFOR
 
 		CASE m.Ctrl.BaseClass $ 'Commandgroup,Optiongroup'
 
 			FOR EACH m.SubCtrl In m.Ctrl.Buttons
-				This.AdjustSize(m.SubCtrl, m.DPIScale, m.DPINewScale)
+				This.ScaleControl(m.SubCtrl, m.DPIScale, m.DPINewScale)
 			ENDFOR
 
 		ENDCASE
@@ -1024,10 +1024,6 @@ Define Class DPIAwareManager As Custom
 
 		LOCAL SubCtrl AS Object
 
-		IF ! This.IsAccessible(m.Ctrl)					&& make sure we have access to the control
-			RETURN
-		ENDIF
-
 		TRY
 			m.Ctrl.Anchor = IIF(m.Unset, 0, m.Ctrl.DPIAWare_Anchor)
 		CATCH
@@ -1053,7 +1049,9 @@ Define Class DPIAwareManager As Custom
 		CASE m.Ctrl.BaseClass $ 'Commandgroup,Optiongroup'
 
 			FOR EACH m.SubCtrl IN m.Ctrl.Buttons
-				This.SetAnchorControl(m.SubCtrl, m.Unset)
+				IF This.IsAccessible(m.SubCtrl)
+					This.SetAnchorControl(m.SubCtrl, m.Unset)
+				ENDIF
 			ENDFOR
 
 		ENDCASE
