@@ -133,13 +133,17 @@ Define Class DPIAwareManager As Custom
 				m.Constraints))
 		This.AddDPIProperty(m.AForm, "DPIManagerEvent", "Manage")
 		This.AddDPIProperty(m.AForm, "DPIScaling", .F.)
+		This.AddDPIProperty(m.AForm, "DPIPositioning", .F.)
+		This.AddDPIProperty(m.AForm, "DPINormalTop", m.AForm.Top)
+		This.AddDPIProperty(m.AForm, "DPINormalLeft", m.AForm.Left)
+		This.AddDPIProperty(m.AForm, "DPIMinimized", .F.)
 		
 		* save the original value of dimensional and positional properties of the form
 		This.SaveContainer(m.AForm)
 
 		* bind the form to the two listeners for changes of the DPI scale
-		IF m.AForm == _Screen
-			BINDEVENT(_Screen, "Moved", This, "CheckDPIScaleChange")
+		IF m.AForm == _Screen OR m.AForm.ShowWindow == 2
+			BINDEVENT(m.AForm, "Moved", This, "CheckDPIScaleChange")
 		ENDIF
 		BINDEVENT(m.AForm.hWnd, WM_DPICHANGED, This, "WMCheckDPIScaleChange")
 		* and to clean-up methods
@@ -445,6 +449,24 @@ Define Class DPIAwareManager As Custom
 		LOCAL DPIAwareForm AS Form
 		m.DPIAwareForm = m.SourceEvent(1)
 
+		IF m.DPIAwareForm.DPIPositioning
+			RETURN
+		ENDIF
+
+		* for top windows, check minimized state and save last known normal position
+		IF m.DPIAwareForm.ShowWindow == 2
+			IF m.DPIAwareForm.WindowState == 1
+				m.DPIAwareForm.DPIMinimized = .T.
+			ELSE
+				m.DPIAwareForm.DPIMinimized = .F.
+				IF m.DPIAwareForm.WindowState == 0
+					m.DPIAwareForm.DPINormalTop = m.DPIAwareForm.Top
+					m.DPIAwareForm.DPINormalLeft = m.DPIAwareForm.Left
+				ENDIF
+			ENDIF
+			RETURN
+		ENDIF
+
 		* refresh information on the monitor where the form is being displayed
 		This.SetMonitorInfo(m.DPIAwareForm)
 
@@ -476,7 +498,11 @@ Define Class DPIAwareManager As Custom
 		LOCAL Ops AS Exception
 
 		* act only if the scale of the form has changed (the _Screen may have only moved)
-		IF m.NewDPIScale != m.DPIAwareForm.DPIScale
+		DO CASE
+		CASE m.DPIAwareForm.DPIScaling		&& and we are not scaling
+			RETURN -1
+
+		CASE m.NewDPIScale != m.DPIAwareForm.DPIScale
 
 			m.DPIScale = m.DPIAwareForm.DPIScale
 			TRY
@@ -494,6 +520,7 @@ Define Class DPIAwareManager As Custom
 			* perform the actual scaling
 			TRY
 
+				This.RestoreTopWindow(m.DPIAwareForm, m.NewDPIScale)
 				This.Scale(m.DPIAwareForm, m.DPIAwareForm.DPIScale, m.NewDPIScale)
 				This.EnforceFormConstraints(m.DPIAwareForm)
 
@@ -521,7 +548,16 @@ Define Class DPIAwareManager As Custom
 
 			RETURN 0
 
-		ENDIF
+		* for just movement of the (screen) form, save windows minized state or normal position
+		CASE m.DPIAwareForm.WindowState == 1
+			m.DPIAwareForm.DPIMinimized = .T.
+
+		CASE m.DPIAwareForm.WindowState == 0
+			m.DPIAwareForm.DPIMinimized = .F.
+			m.DPIAwareForm.DPINormalTop = m.DPIAwareForm.Top
+			m.DPIAwareForm.DPINormalLeft = m.DPIAwareForm.Left
+
+		ENDCASE
 
 		RETURN -1
 
@@ -542,8 +578,10 @@ Define Class DPIAwareManager As Custom
 		m.NewXYRatio = This.GetXYRatio(m.DPIAwareForm.DPINewScale)
 
 		IF BITAND(m.DPIAwareForm.DPIAutoConstraint, DPIAW_RELATIVE_TOP_LEFT) != 0
+			m.DPIAwareForm.DPIPositioning = .T.
 			m.DPIAwareForm.Top = (m.DPIAwareForm.Top / m.XYRatio) * m.NewXYRatio
 			m.DPIAwareForm.Left = (m.DPIAwareForm.Left / m.XYRatio) * m.NewXYRatio
+			m.DPIAwareForm.DPIPositioning = .F.
 		ENDIF
 
 		IF BITAND(m.DPIAwareForm.DPIAutoConstraint, DPIAW_CONSTRAINT_DIMENSION) != 0
@@ -566,6 +604,23 @@ Define Class DPIAwareManager As Custom
 				ENDIF
 			ENDIF
 
+		ENDIF
+
+	ENDFUNC
+
+	* RestoreTopWindow
+	* reposition a minimized form to its normal position before scaling it
+	FUNCTION RestoreTopWindow (DPIAwareForm AS Form, NewDPIScale AS Integer)
+
+		LOCAL XYChange AS Number
+
+		IF m.DPIAwareForm.DPIMinimized AND (m.DPIAwareForm == _Screen OR m.DPIAwareForm.ShowWindow == 2)
+			m.XYChange = This.GetXYChangeRatio(m.DPIAwareForm.DPIScale, m.NewDPIScale)
+			m.DPIAwareForm.DPIMinimized = .F.
+			m.DPIAwareForm.DPIPositioning = .T.
+			m.DPIAwareForm.Top = m.DPIAwareForm.DPINormalTop * m.XYChange
+			m.DPIAwareForm.Left = m.DPIAwareForm.DPINormalLeft * m.XYChange
+			m.DPIAwareForm.DPIPositioning = .F.
 		ENDIF
 
 	ENDFUNC
