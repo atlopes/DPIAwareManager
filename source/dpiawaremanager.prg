@@ -20,6 +20,18 @@ SET PROCEDURE TO (SYS(16)) ADDITIVE
 
 #DEFINE DC_LOGPIXELSX	88
 
+#DEFINE DISPLAY_DEVICE_ACTIVE					1
+#DEFINE DISPLAY_DEVICE_PRIMARY_DEVICE		4
+#DEFINE DISPLAY_DEVICE_MIRRORING_DRIVER	8
+
+#DEFINE ENUM_CURRENT_SETTINGS					-1
+
+#DEFINE MONITOR_DEFAULTTONEAREST				2
+
+#DEFINE SIZEOF_DISPLAYDEVICE					424
+#DEFINE SIZEOF_MONITORINFOEX					72
+
+
 Define Class DPIAwareManager As Custom
 
 	* process DPI awareness type
@@ -236,8 +248,8 @@ Define Class DPIAwareManager As Custom
 	ENDFUNC
 
 	* GetMonitorInfo
-	* Returns dimensional and position information of a monitor.
-	FUNCTION GetMonitorInfo (hMonitor AS Integer, IsWorkArea AS Logical) AS Object
+	* Returns dimensional and position information of a monitor, given its handle or an xy coordinate
+	FUNCTION GetMonitorInfo (hMonitor AS Integer, IsWorkArea AS Logical, PosX AS Integer, PosY AS Integer) AS Object
 
 		LOCAL MonitorInfoStructure AS String
 		LOCAL Rect AS String
@@ -245,7 +257,11 @@ Define Class DPIAwareManager As Custom
 
 		m.MonitorInfoStructure = BINTOC(SIZEOF_MONITORINFO, "4RS") + REPLICATE(0h00, SIZEOF_MONITORINFO - 4)
 
-		dpiaw_GetMonitorInfo(m.hMonitor, @m.MonitorInfoStructure)
+		IF PCOUNT() < 3
+			dpiaw_GetMonitorInfo(m.hMonitor, @m.MonitorInfoStructure)
+		ELSE
+			dpiaw_GetMonitorInfo(dpiaw_MonitorFromPoint(m.PosX, m.PosY, MONITOR_DEFAULTTONEAREST), @m.MonitorInfoStructure)
+		ENDIF
 
 		IF !m.IsWorkArea
 			m.Rect = SUBSTR(m.MonitorInfoStructure, 5, 16)
@@ -271,17 +287,6 @@ Define Class DPIAwareManager As Custom
 
 		* refresh the collection of displays
 		This.Displays.Remove(-1)
-
-#DEFINE DISPLAY_DEVICE_ACTIVE					1
-#DEFINE DISPLAY_DEVICE_PRIMARY_DEVICE		4
-#DEFINE DISPLAY_DEVICE_MIRRORING_DRIVER	8
-
-#DEFINE ENUM_CURRENT_SETTINGS					-1
-
-#DEFINE MONITOR_DEFAULTTONEAREST				2
-
-#DEFINE SIZEOF_DISPLAYDEVICE					424
-#DEFINE SIZEOF_MONITORINFOEX					72
 
 		LOCAL CStruct AS String
 		LOCAL StateFlags AS Integer
@@ -557,6 +562,9 @@ Define Class DPIAwareManager As Custom
 			m.DPIAwareForm.DPINormalTop = m.DPIAwareForm.Top
 			m.DPIAwareForm.DPINormalLeft = m.DPIAwareForm.Left
 
+		OTHERWISE
+			m.DPIAwareForm.DPIMinimized = .F.
+
 		ENDCASE
 
 		RETURN -1
@@ -620,6 +628,26 @@ Define Class DPIAwareManager As Custom
 			m.DPIAwareForm.DPIPositioning = .T.
 			m.DPIAwareForm.Top = m.DPIAwareForm.DPINormalTop * m.XYChange
 			m.DPIAwareForm.Left = m.DPIAwareForm.DPINormalLeft * m.XYChange
+			m.DPIAwareForm.DPIPositioning = .F.
+		ENDIF
+
+	ENDFUNC
+
+	* MoveFormToMonitor
+	* Positions a form in a given monitor / display
+	FUNCTION MoveFormToMonitor (DPIAwareForm AS Form, MonitorInfo AS Object, AutoCenter AS Logical)
+
+		* move (and scale) the form
+		m.DPIAwareForm.DPIPositioning = .T.
+		m.DPIAwareForm.Left = m.MonitorInfo.Left
+		m.DPIAwareForm.DPIPositioning = .F.
+		m.DPIAwareForm.Top = m.MonitorInfo.Top
+
+		* auto-center, if intended
+		IF m.AutoCenter
+			m.DPIAwareForm.DPIPositioning = .T.
+			m.DPIAwareForm.Left = m.DPIAwareForm.Left + m.MonitorInfo.Width / 2 - m.DPIAwareForm.Width / 2
+			m.DPIAwareForm.Top = m.DPIAwareForm.Top + m.MonitorInfo.Height / 2 - m.DPIAwareForm.Height / 2
 			m.DPIAwareForm.DPIPositioning = .F.
 		ENDIF
 
