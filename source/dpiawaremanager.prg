@@ -128,7 +128,7 @@ Define Class DPIAwareManager As Custom
 	FUNCTION Manage (AForm AS Form, Constraints AS Integer) AS Void
 
 		* manage only forms, for now
-		IF m.AForm.BaseClass != "Form"
+		IF ! This.IsAccessible(m.AForm) OR m.AForm.BaseClass != "Form"
 			RETURN
 		ENDIF
 
@@ -1591,13 +1591,20 @@ Define Class DPIAwareManager As Custom
 	ENDFUNC
 
 	* AddDPIProperty
-	* Adds a DPI-awareness related property to an object (fails silently)
-	FUNCTION AddDPIProperty (Ctrl AS Object, Property AS String, InitialValue) AS Void
+	* Adds a DPI-awareness related property to an object (fails silently, but returns error)
+	FUNCTION AddDPIProperty (Ctrl AS Object, Property AS String, InitialValue) AS Integer
 
+		LOCAL Ops AS Exception
+		LOCAL ErrorCode AS Integer
+
+		m.ErrorCode = 0
 		TRY
 			m.Ctrl.AddProperty(m.Property, m.InitialValue)
-		CATCH
+		CATCH TO m.Ops
+			m.ErrorCode = m.Ops.ErrorNo
 		ENDTRY
+
+		RETURN m.ErrorCode
 
 	ENDFUNC
 
