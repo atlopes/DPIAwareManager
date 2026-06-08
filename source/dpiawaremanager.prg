@@ -14,6 +14,7 @@ SET PROCEDURE TO (SYS(16)) ADDITIVE
 #DEFINE DPIAW_NO_REPOSITION				0
 #DEFINE DPIAW_RELATIVE_TOP_LEFT			0x01
 #DEFINE DPIAW_CONSTRAINT_DIMENSION		0x02
+#DEFINE DPIAW_NO_PREADJUST					0x04
 
 #DEFINE ICON_SMALL	0
 #DEFINE ICON_BIG		1
@@ -137,8 +138,8 @@ Define Class DPIAwareManager As Custom
 		This.AddDPIProperty(m.AForm, "hMonitor", dpiaw_MonitorFromWindow(m.AForm.HWnd, 0))
 		This.AddDPIProperty(m.AForm, "DPIMonitorInfo", This.GetMonitorInfo(m.AForm.hMonitor, .F.))
 		This.AddDPIProperty(m.AForm, "DPIMonitorClientAreaInfo", This.GetMonitorInfo(m.AForm.hMonitor, .T.))
-		This.AddDPIProperty(m.AForm, "DPIScale", This.GetMonitorDPIScale(m.AForm))
-		This.AddDPIProperty(m.AForm, "DPINewScale", m.AForm.DPIScale)
+		This.AddDPIProperty(m.AForm, "DPIScale", DPI_STANDARD_SCALE)
+		This.AddDPIProperty(m.AForm, "DPINewScale", This.GetMonitorDPIScale(m.AForm))
 		This.AddDPIProperty(m.AForm, "DPIAutoConstraint", ;
 			IIF(PCOUNT() == 1, ;
 				IIF(m.AForm == _Screen OR m.AForm.ShowWindow == 2, DPIAW_NO_REPOSITION, DPIAW_RELATIVE_TOP_LEFT), ;
@@ -166,7 +167,8 @@ Define Class DPIAwareManager As Custom
 			IF m.AForm = _Screen AND PEMSTATUS(_Screen, "DPIAwareScreenManager", 5)
 				_Screen.DPIAwareScreenManager.SelfManage(DPI_STANDARD_SCALE, m.AForm.DPINewScale) 
 			ENDIF
-			This.Scale(m.AForm, DPI_STANDARD_SCALE, m.AForm.DPINewScale, .T.)
+			m.AForm.DPIAutoConstraint = BITOR(m.AForm.DPIAutoConstraint, DPIAW_NO_PREADJUST)
+			This.ChangeFormDPIScale(m.AForm, m.AForm.DPINewScale)
 		ENDIF
 
 	ENDFUNC
@@ -526,7 +528,7 @@ Define Class DPIAwareManager As Custom
 			TRY
 
 				This.RestoreTopWindow(m.DPIAwareForm, m.NewDPIScale)
-				This.Scale(m.DPIAwareForm, m.DPIAwareForm.DPIScale, m.NewDPIScale)
+				This.Scale(m.DPIAwareForm, m.DPIAwareForm.DPIScale, m.NewDPIScale, BITAND(m.DPIAwareForm.DPIAutoConstraint, DPIAW_NO_PREADJUST) != 0)
 				This.EnforceFormConstraints(m.DPIAwareForm)
 
 				IF m.DPIAwareForm = _Screen AND PEMSTATUS(_Screen, "DPIAwareScreenManager", 5)
@@ -538,6 +540,7 @@ Define Class DPIAwareManager As Custom
 				SET STEP ON
 			ENDTRY
 
+			m.DPIAwareForm.DPIAutoConstraint = BITAND(m.DPIAwareForm.DPIAutoConstraint, BITNOT(DPIAW_NO_PREADJUST))
 			m.DPIAwareForm.LockScreen = .F.
 
 			m.DPIAwareForm.DPIScale = m.NewDPIScale
